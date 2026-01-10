@@ -1,0 +1,116 @@
+﻿:root {
+  --card-bg: #ffffff;
+  --accent: #0f172a;
+}
+
+body {
+  background: linear-gradient(120deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+[data-testid="stAppViewContainer"] {
+  background: transparent;
+}
+
+.block-container {
+  padding-top: 2rem;
+}
+
+.kpi-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--card-bg);
+}
+
+.team-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.kpi-info-spacer {
+  height: 20px;
+}
+
+div[data-testid="stRadio"] div[role="radiogroup"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] {
+  margin-right: 0;
+}
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] > div {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: transparent;
+}
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] input:checked + div {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] input {
+  display: none;
+}
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {
+  display: none;
+}
+
+div[data-testid="stRadio"] label[data-baseweb="radio"] input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+div[data-testid="stButton"] button {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  color: inherit;
+}
+
+div[data-testid="stButton"] button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+.info-icon {
+  position: relative;
+  color: #cbd5f5;
+}
+
+.info-icon:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: 120%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+  border: 1px solid #334155;
+}
+
+.info-icon:hover::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 110%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent #334155 transparent;
+}

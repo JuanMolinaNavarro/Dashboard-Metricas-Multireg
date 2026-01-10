@@ -1,0 +1,9 @@
+﻿from __future__ import annotations
+
+import os
+
+APP_TITLE = "Dashboard Metricas Callcenter"
+
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:3000")
+DEFAULT_MAX_SECONDS = int(os.getenv("FRT_MAX_SECONDS", "300"))
+DEFAULT_FRT_LIMIT = int(os.getenv("FRT_LIMIT", "10"))

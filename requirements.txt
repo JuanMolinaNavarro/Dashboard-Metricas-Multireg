@@ -1,0 +1,7 @@
+﻿streamlit
+streamlit-shadcn-ui
+requests
+pandas
+plotly
+altair
+pytest
