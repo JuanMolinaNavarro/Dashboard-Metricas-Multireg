@@ -12,7 +12,15 @@ st.set_page_config(page_title=APP_TITLE, layout="wide")
 with open("assets/styles.css", "r", encoding="utf-8") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+st.markdown(
+    "<style>[data-testid='stSidebar']{display:none;} header, [data-testid='stToolbar']{display:none;}</style>",
+    unsafe_allow_html=True,
+)
+
 st.title(APP_TITLE)
+
+if "main_tabs" not in st.session_state:
+    st.session_state["main_tabs"] = "Casos Atendidos"
 
 selected_tab = ui.tabs(
     ["Casos Atendidos", "Tiempo de primera respuesta", "Duracion", "Casos"],
