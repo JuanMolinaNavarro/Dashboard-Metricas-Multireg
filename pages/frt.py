@@ -76,7 +76,7 @@ def render():
     else:
         frt_data = api_client.frt_tiempo_primera_respuesta(start, end, team_uuid, agent_email)
 
-    ranking = api_client.frt_ranking_agentes(start, end, limit=DEFAULT_FRT_LIMIT, team_uuid=team_uuid)
+    ranking = api_client.frt_ranking_agentes(start, end, limit=100, team_uuid=team_uuid)
     resumen_agentes = api_client.frt_resumen_agentes(start, end)
     resumen_equipos = api_client.frt_resumen_equipos(start, end)
 
@@ -85,7 +85,9 @@ def render():
     df = pd.DataFrame(rows)
     if not df.empty:
         team_names = (
-            sorted(df["team_name"].dropna().unique().tolist()) if "team_name" in df.columns else []
+            [n for n in sorted(df["team_name"].dropna().unique().tolist()) if n != "CHATBOT"]
+            if "team_name" in df.columns
+            else []
         )
         if team_names:
             options = ["Todos"] + team_names
@@ -102,6 +104,8 @@ def render():
         if selected_team and "team_name" in df.columns:
             filtered_df = df[df["team_name"] == selected_team]
         filtered_df = exclude_agent_rows(filtered_df, "olartefacundo@outlook.com")
+        if "team_name" in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df["team_name"] != "CHATBOT"]
 
         avg_val = filtered_df["avg_frt_seconds"].mean() if "avg_frt_seconds" in filtered_df.columns else 0
         median_val = (
@@ -109,8 +113,34 @@ def render():
         )
         p90_val = filtered_df["p90_frt_seconds"].mean() if "p90_frt_seconds" in filtered_df.columns else 0
 
-        kpi_cols = st.columns(3)
+        # Casos abiertos por empresa desde resumen-equipos
+        resumen_eq_rows = (
+            resumen_equipos.get("data", resumen_equipos)
+            if isinstance(resumen_equipos, dict)
+            else resumen_equipos
+        )
+        df_resumen_eq = pd.DataFrame(resumen_eq_rows)
+        df_resumen_eq = exclude_agent_rows(df_resumen_eq, "olartefacundo@outlook.com")
+        if selected_team and "team_name" in df_resumen_eq.columns:
+            df_resumen_eq = df_resumen_eq[df_resumen_eq["team_name"] == selected_team]
+        casos_abiertos = (
+            float(df_resumen_eq["casos_abiertos"].sum())
+            if not df_resumen_eq.empty and "casos_abiertos" in df_resumen_eq.columns
+            else 0
+        )
+
+        kpi_cols = st.columns(4)
         with kpi_cols[0]:
+            st.markdown(
+                f"""
+<div class="kpi-card">
+  <div style="font-size: 14px; opacity: 0.8;">Casos Abiertos {info_icon('Total de casos abiertos para la empresa seleccionada en el rango.')}</div>
+  <div style="font-size: 32px; font-weight: 700;">{int(casos_abiertos)}</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        with kpi_cols[1]:
             st.markdown(
                 f"""
 <div class="kpi-card">
@@ -120,7 +150,7 @@ def render():
 """,
                 unsafe_allow_html=True,
             )
-        with kpi_cols[1]:
+        with kpi_cols[2]:
             st.markdown(
                 f"""
 <div class="kpi-card">
@@ -130,7 +160,7 @@ def render():
 """,
                 unsafe_allow_html=True,
             )
-        with kpi_cols[2]:
+        with kpi_cols[3]:
             st.markdown(
                 f"""
 <div class="kpi-card">
@@ -142,12 +172,18 @@ def render():
             )
 
         if selected_team:
-            if "team_uuid" in filtered_df.columns:
-                filtered_df = filtered_df.drop(columns=["team_uuid"])
+            display_df = filtered_df.copy()
+            if "team_uuid" in display_df.columns:
+                display_df = display_df.drop(columns=["team_uuid"])
+
+            avg_series = display_df["avg_frt_seconds"] if "avg_frt_seconds" in display_df.columns else None
+            min_avg = float(avg_series.min()) if avg_series is not None and not avg_series.empty else None
+            max_avg = float(avg_series.max()) if avg_series is not None and not avg_series.empty else None
+
             for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
-                if col in filtered_df.columns:
-                    filtered_df[col] = filtered_df[col].apply(format_seconds)
-            filtered_df = filtered_df.rename(
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(format_seconds)
+            display_df = display_df.rename(
                 columns={
                     "dia": "Dia",
                     "team_name": "Empresa",
@@ -163,7 +199,68 @@ def render():
                 f"#### Detalle por empresa {info_icon('Detalle diario de tiempos por empresa en el rango seleccionado.')}",
                 unsafe_allow_html=True,
             )
-            ui.table(prepare_table(filtered_df))
+
+            def _style_best_worst(row):
+                if min_avg is None or max_avg is None:
+                    return [""] * len(row)
+                idx = row.name
+                try:
+                    value = float(filtered_df.loc[idx, "avg_frt_seconds"])
+                except Exception:
+                    return [""] * len(row)
+                if value == min_avg:
+                    return ["color: #16a34a; font-weight: 700; text-decoration: underline;"] * len(row)
+                if value == max_avg:
+                    return ["color: #dc2626; font-weight: 700; text-decoration: underline;"] * len(row)
+                return [""] * len(row)
+
+            numeric_df = filtered_df.reset_index(drop=True).copy()
+            table_df = display_df.reset_index(drop=True)
+            table_df = prepare_table(table_df)
+
+            # compute min/max avg_frt_seconds excluding zeros and the supervisora agent
+            avg_series_raw = numeric_df["avg_frt_seconds"] if "avg_frt_seconds" in numeric_df.columns else None
+            exclude_mask = (
+                numeric_df["agent_email"] != "supervisora_callc@multireg.com.ar"
+                if "agent_email" in numeric_df.columns
+                else True
+            )
+            nonzero_avg = (
+                avg_series_raw[(avg_series_raw > 0) & exclude_mask]
+                if avg_series_raw is not None
+                else None
+            )
+            min_avg_nz = float(nonzero_avg.min()) if nonzero_avg is not None and not nonzero_avg.empty else None
+            max_avg_nz = float(nonzero_avg.max()) if nonzero_avg is not None and not nonzero_avg.empty else None
+
+            def _style_best_worst_row(row):
+                if avg_series_raw is None:
+                    return [""] * len(row)
+                idx = row.name - 1  # table_df index starts at 1
+                try:
+                    avg_val = float(numeric_df.loc[idx, "avg_frt_seconds"])
+                except Exception:
+                    avg_val = None
+                try:
+                    responded = float(numeric_df.loc[idx, "casos_respondidos"])
+                except Exception:
+                    responded = None
+
+                if responded == 0:
+                    return ["color: #f59e0b; font-weight: 700; text-decoration: underline;"] * len(row)
+                if min_avg_nz is not None and avg_val == min_avg_nz:
+                    return ["color: #16a34a; font-weight: 700; text-decoration: underline;"] * len(row)
+                if max_avg_nz is not None and avg_val == max_avg_nz:
+                    return ["color: #dc2626; font-weight: 700; text-decoration: underline;"] * len(row)
+                return [""] * len(row)
+
+            styler = table_df.style.apply(_style_best_worst_row, axis=1)
+            st.dataframe(styler, use_container_width=True)
+            st.caption(
+                "Fila amarilla: casos respondidos = 0. "
+                "Fila verde: menor tiempo promedio (> 0). "
+                "Fila roja: mayor tiempo promedio (> 0)."
+            )
         else:
             st.markdown("<div class=\"kpi-info-spacer\"></div>", unsafe_allow_html=True)
             st.info("Selecciona una empresa para ver la tabla de detalle.")
@@ -177,24 +274,79 @@ def render():
     rank_rows = ranking.get("data", ranking) if isinstance(ranking, dict) else ranking
     rank_df = pd.DataFrame(rank_rows)
     rank_df = exclude_agent_rows(rank_df, "olartefacundo@outlook.com")
+    if "agent_email" in rank_df.columns:
+        rank_df = rank_df[rank_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
+
+    resumen_rows = (
+        resumen_agentes.get("data", resumen_agentes)
+        if isinstance(resumen_agentes, dict)
+        else resumen_agentes
+    )
+    resumen_df = pd.DataFrame(resumen_rows)
+    if "agent_email" in resumen_df.columns:
+        resumen_df = resumen_df[resumen_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
+
     if not rank_df.empty:
+        if "agent_email" in resumen_df.columns:
+            rank_df = rank_df.merge(
+                resumen_df[["agent_email", "casos_abiertos"]],
+                on="agent_email",
+                how="left",
+            )
         rank_df = rank_df.reset_index(drop=True)
         rank_df.insert(0, "N", rank_df.index + 1)
         if "team_uuid" in rank_df.columns:
             rank_df = rank_df.drop(columns=["team_uuid"])
+
+        numeric_rank = rank_df.copy()
+        avg_series = numeric_rank["avg_frt_seconds"] if "avg_frt_seconds" in numeric_rank.columns else None
+        nonzero_avg = avg_series[avg_series > 0] if avg_series is not None else None
+        min_avg = float(nonzero_avg.min()) if nonzero_avg is not None and not nonzero_avg.empty else None
+        max_avg = float(nonzero_avg.max()) if nonzero_avg is not None and not nonzero_avg.empty else None
+
         for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
             if col in rank_df.columns:
                 rank_df[col] = rank_df[col].apply(format_seconds)
+
         rank_df = rank_df.rename(
             columns={
                 "agent_email": "Agente",
+                "casos_abiertos": "Casos Recibidos",
                 "casos_respondidos": "Casos Respondidos",
                 "avg_frt_seconds": "Tiempo de primera respuesta Promedio (s)",
                 "median_frt_seconds": "Tiempo de primera respuesta Mediana (s)",
                 "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
             }
         )
-        ui.table(prepare_table(rank_df))
+        if "Casos Recibidos" in rank_df.columns:
+            cols = rank_df.columns.tolist()
+            if "Agente" in cols and "Casos Respondidos" in cols:
+                cols.remove("Casos Recibidos")
+                insert_at = cols.index("Casos Respondidos")
+                cols.insert(insert_at, "Casos Recibidos")
+                rank_df = rank_df[cols]
+        rank_df = prepare_table(rank_df)
+
+        def _style_rank_row(row):
+            if min_avg is None or max_avg is None:
+                return [""] * len(row)
+            idx = row.name - 1
+            try:
+                value = float(numeric_rank.loc[idx, "avg_frt_seconds"])
+            except Exception:
+                return [""] * len(row)
+            if value == min_avg:
+                return ["color: #16a34a; font-weight: 700;"] * len(row)
+            if value == max_avg:
+                return ["color: #dc2626; font-weight: 700;"] * len(row)
+            return [""] * len(row)
+
+        styler = rank_df.style.apply(_style_rank_row, axis=1)
+        st.dataframe(styler, use_container_width=True)
+        st.caption(
+            "Fila verde: mejor ranking (menor tiempo promedio > 0). "
+            "Fila roja: peor ranking (mayor tiempo promedio > 0)."
+        )
     else:
         st.info("Sin datos de ranking disponibles.")
 
@@ -214,17 +366,23 @@ def render():
     def _style_sla(df: pd.DataFrame):
         if "% SLA" not in df.columns:
             return df
-        def _color(val):
+        series = pd.to_numeric(df["% SLA"], errors="coerce")
+        nonzero = series[series > 0]
+        min_sla = float(nonzero.min()) if not nonzero.empty else None
+        max_sla = float(nonzero.max()) if not nonzero.empty else None
+
+        def _color_row(row):
             try:
-                value = float(val)
-            except (TypeError, ValueError):
-                return ""
-            if value < 70:
-                return "color: #dc2626; font-weight: 600;"
-            if value < 90:
-                return "color: #f59e0b; font-weight: 600;"
-            return ""
-        styler = df.style.applymap(_color, subset=["% SLA"])
+                value = float(row["% SLA"])
+            except (TypeError, ValueError, KeyError):
+                return [""] * len(row)
+            if max_sla is not None and value == max_sla and value > 0:
+                return ["color: #16a34a; font-weight: 700;"] * len(row)
+            if min_sla is not None and value == min_sla and value > 0:
+                return ["color: #dc2626; font-weight: 700;"] * len(row)
+            return [""] * len(row)
+
+        styler = df.style.apply(_color_row, axis=1)
         styler = styler.format({"% SLA": "{:.2f}"})
         return styler
 
@@ -248,8 +406,32 @@ def render():
                 "pct_sla": "% SLA",
             }
         )
+        if "agent_email" in resumen_df.columns and "casos_abiertos" in resumen_df.columns:
+            sla_agent = sla_agent.merge(
+                resumen_df[["agent_email", "casos_abiertos"]],
+                left_on="Agente",
+                right_on="agent_email",
+                how="left",
+            )
+            sla_agent = sla_agent.drop(columns=["agent_email"]).rename(
+                columns={"casos_abiertos": "Casos Recibidos"}
+            )
+            if "Agente" in sla_agent.columns:
+                sla_agent = sla_agent[sla_agent["Agente"] != "supervisora_callc@multireg.com.ar"]
+            if "Casos Recibidos" in sla_agent.columns:
+                sla_agent["Casos Recibidos"] = (
+                    sla_agent["Casos Recibidos"].fillna(0).astype(int)
+                )
+            cols = sla_agent.columns.tolist()
+            if "Agente" in cols and "Casos Respondidos" in cols and "Casos Recibidos" in cols:
+                cols.remove("Casos Recibidos")
+                cols.insert(cols.index("Casos Respondidos"), "Casos Recibidos")
+                sla_agent = sla_agent[cols]
         sla_agent = prepare_table(sla_agent)
         st.dataframe(_style_sla(sla_agent), use_container_width=True)
+        st.caption(
+            "% SLA: verde = valor mas alto (> 0), rojo = valor mas bajo (> 0)."
+        )
     else:
         st.info("Sin datos de SLA por agente.")
 
@@ -281,8 +463,31 @@ def render():
                     "pct_sla": "% SLA",
                 }
             )
+            if "team_name" in df_resumen_eq.columns and "casos_abiertos" in df_resumen_eq.columns:
+                sla_team = sla_team.merge(
+                    df_resumen_eq[df_resumen_eq["team_name"] != "CHATBOT"][
+                        ["team_name", "casos_abiertos"]
+                    ].rename(columns={"team_name": "Empresa"}),
+                    on="Empresa",
+                    how="left",
+                )
+                sla_team = sla_team.rename(columns={"casos_abiertos": "Casos Recibidos"})
+                if "Casos Recibidos" in sla_team.columns:
+                    sla_team["Casos Recibidos"] = (
+                        sla_team["Casos Recibidos"].fillna(0).astype(int)
+                    )
+                cols = sla_team.columns.tolist()
+                if "Empresa" in cols and "Casos Respondidos" in cols and "Casos Recibidos" in cols:
+                    cols.remove("Casos Recibidos")
+                    cols.insert(cols.index("Casos Respondidos"), "Casos Recibidos")
+                    sla_team = sla_team[cols]
+            if "Empresa" in sla_team.columns:
+                sla_team = sla_team[sla_team["Empresa"] != "CHATBOT"]
             sla_team = prepare_table(sla_team)
             st.dataframe(_style_sla(sla_team), use_container_width=True)
+            st.caption(
+                "% SLA: verde = valor mas alto (> 0), rojo = valor mas bajo (> 0)."
+            )
         else:
             st.info("Sin datos de SLA por empresa.")
     else:
@@ -301,6 +506,8 @@ def render():
         for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
             if col in df_agents.columns:
                 df_agents[col] = df_agents[col].apply(format_seconds)
+        if "team_name" in df_agents.columns:
+            df_agents = df_agents[df_agents["team_name"] != "CHATBOT"]
         df_agents = df_agents.rename(
             columns={
                 "agent_email": "Agente",
@@ -328,6 +535,7 @@ def render():
         for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
             if col in df_teams.columns:
                 df_teams[col] = df_teams[col].apply(format_seconds)
+        df_teams = df_teams[df_teams["team_name"] != "CHATBOT"]
         df_teams = df_teams.rename(
             columns={
                 "team_name": "Empresa",

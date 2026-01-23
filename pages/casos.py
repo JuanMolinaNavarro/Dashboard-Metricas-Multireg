@@ -125,7 +125,15 @@ def render():
     agent_key = "agent_email"
 
     empresas = (
-        sorted(pd.concat([df_res.get(team_key, pd.Series()), df_ab.get(team_key, pd.Series())]).dropna().unique())
+        [
+            n
+            for n in sorted(
+                pd.concat([df_res.get(team_key, pd.Series()), df_ab.get(team_key, pd.Series())])
+                .dropna()
+                .unique()
+            )
+            if n != "CHATBOT"
+        ]
         if team_key in df_res.columns or team_key in df_ab.columns
         else []
     )
@@ -168,11 +176,11 @@ def render():
                 value = float(val)
             except (TypeError, ValueError):
                 return ""
-            if value < 75:
+            if value < 80:
                 return "color: #dc2626; font-weight: 600;"
-            if value < 85:
+            if value < 90:
                 return "color: #f59e0b; font-weight: 600;"
-            return ""
+            return "color: #16a34a; font-weight: 600;"
 
         def _color_abandonados(val):
             try:
@@ -183,7 +191,7 @@ def render():
                 return "color: #dc2626; font-weight: 600;"
             if value >= 15:
                 return "color: #f59e0b; font-weight: 600;"
-            return ""
+            return "color: #16a34a; font-weight: 600;"
 
         styler = df.style
         if "Porcentaje de Resueltos" in df.columns:
@@ -260,8 +268,14 @@ def render():
         agent_table = agent_table.drop(columns=["team_uuid"])
 
     team_display = _format_table(team_table, team_key)
+    if "Empresa" in team_display.columns:
+        team_display = team_display[team_display["Empresa"] != "CHATBOT"]
     team_display = prepare_table(team_display)
     st.dataframe(_style_casos(team_display), use_container_width=True)
+    st.caption(
+        "% Resueltos: verde > 90%, amarillo 80% - 90%, rojo < 80%. "
+        "% Abandonados: verde < 15%, amarillo 15% - 25%, rojo > 25%."
+    )
 
     st.markdown(
         f"#### Resumen por agente {info_icon('Suma de casos abiertos, resueltos y abandonados por agente. Porcentajes = casos / abiertos.')}",
@@ -270,6 +284,10 @@ def render():
     agent_display = _format_table(agent_table, agent_key)
     agent_display = prepare_table(agent_display)
     st.dataframe(_style_casos(agent_display), use_container_width=True)
+    st.caption(
+        "% Resueltos: verde > 90%, amarillo 80% - 90%, rojo < 80%. "
+        "% Abandonados: verde < 15%, amarillo 15% - 25%, rojo > 25%."
+    )
 
 
 if __name__ == "__main__":

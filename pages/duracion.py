@@ -77,7 +77,9 @@ def render():
     df = pd.DataFrame(rows)
     if not df.empty:
         team_names = (
-            sorted(df["team_name"].dropna().unique().tolist()) if "team_name" in df.columns else []
+            [n for n in sorted(df["team_name"].dropna().unique().tolist()) if n != "CHATBOT"]
+            if "team_name" in df.columns
+            else []
         )
         if team_names:
             options = ["Todos"] + team_names
@@ -93,6 +95,8 @@ def render():
         if selected_team and "team_name" in df.columns:
             df = df[df["team_name"] == selected_team]
         df = exclude_agent_rows(df, "olartefacundo@outlook.com")
+        if "team_name" in df.columns:
+            df = df[df["team_name"] != "CHATBOT"]
 
         mediana = df["median_duration_seconds"].mean() if "median_duration_seconds" in df.columns else 0
         promedio = df["avg_duration_seconds"].mean() if "avg_duration_seconds" in df.columns else 0
@@ -174,6 +178,8 @@ def render():
     if not df_agents.empty:
         if "team_uuid" in df_agents.columns:
             df_agents = df_agents.drop(columns=["team_uuid"])
+        if "team_name" in df_agents.columns:
+            df_agents = df_agents[df_agents["team_name"] != "CHATBOT"]
         for col in ("avg_duration_seconds", "median_duration_seconds", "p90_duration_seconds"):
             if col in df_agents.columns:
                 df_agents[col] = df_agents[col].apply(format_seconds)
@@ -205,6 +211,7 @@ def render():
     if not df_teams.empty:
         if "team_uuid" in df_teams.columns:
             df_teams = df_teams.drop(columns=["team_uuid"])
+        df_teams = df_teams[df_teams["team_name"] != "CHATBOT"]
         for col in ("avg_duration_seconds", "median_duration_seconds", "p90_duration_seconds"):
             if col in df_teams.columns:
                 df_teams[col] = df_teams[col].apply(format_seconds)
