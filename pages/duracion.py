@@ -158,7 +158,7 @@ def render():
                 f"#### Detalle por empresa {info_icon('Detalle diario filtrado por empresa en el rango seleccionado.')}",
                 unsafe_allow_html=True,
             )
-            ui.table(prepare_table(df))
+            st.dataframe(prepare_table(df), use_container_width=True)
         else:
             st.markdown("<div class=\"kpi-info-spacer\"></div>", unsafe_allow_html=True)
             st.info("Selecciona una empresa para ver la tabla de promedio general.")
@@ -192,7 +192,7 @@ def render():
                 "p90_duration_seconds": "Duracion P90 (s)",
             }
         )
-        ui.table(prepare_table(df_agents))
+        st.dataframe(prepare_table(df_agents), use_container_width=True)
     else:
         st.info("Sin datos por agentes.")
 
@@ -224,7 +224,7 @@ def render():
                 "p90_duration_seconds": "Duracion P90 (s)",
             }
         )
-        ui.table(prepare_table(df_teams))
+        st.dataframe(prepare_table(df_teams), use_container_width=True)
     else:
         st.info("Sin datos por empresas.")
 

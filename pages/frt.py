@@ -518,7 +518,7 @@ def render():
                 "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
             }
         )
-        ui.table(prepare_table(df_agents))
+        st.dataframe(prepare_table(df_agents), use_container_width=True)
     else:
         st.info("Sin datos por agentes.")
 
@@ -546,7 +546,7 @@ def render():
                 "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
             }
         )
-        ui.table(prepare_table(df_teams))
+        st.dataframe(prepare_table(df_teams), use_container_width=True)
     else:
         st.info("Sin datos por empresas.")
 
