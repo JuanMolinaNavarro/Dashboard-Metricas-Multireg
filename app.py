@@ -20,19 +20,19 @@ st.markdown(
 st.title(APP_TITLE)
 
 if "main_tabs" not in st.session_state:
-    st.session_state["main_tabs"] = "Casos Atendidos"
+    st.session_state["main_tabs"] = "Inicio"
 
 selected_tab = ui.tabs(
-    ["Casos Atendidos", "Tiempo de primera respuesta", "Duracion", "Casos"],
-    default="Casos Atendidos",
+    ["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos"],
+    default="Inicio",
     key="main_tabs",
 )
 
-if selected_tab == "Casos Atendidos":
+if selected_tab == "Inicio":
     casos_atendidos.render()
 elif selected_tab == "Tiempo de primera respuesta":
     frt.render()
 elif selected_tab == "Duracion":
     duracion.render()
-elif selected_tab == "Casos":
+elif selected_tab == "Abandonos":
     casos.render()
