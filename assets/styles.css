@@ -200,3 +200,8 @@ div[data-testid="stButton"] button:focus {
   border-style: solid;
   border-color: transparent transparent #334155 transparent;
 }
+
+.desc-text {
+  color: #9ca3af;
+  margin: 6px 0 10px 0;
+}

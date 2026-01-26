@@ -6,7 +6,7 @@ import streamlit_shadcn_ui as ui
 
 from config import DEFAULT_FRT_LIMIT, DEFAULT_MAX_SECONDS
 from helpers import api_client
-from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, info_icon, prepare_table, quick_range
+from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, info_icon, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -80,7 +80,6 @@ def render():
     resumen_agentes = api_client.frt_resumen_agentes(start, end)
     resumen_equipos = api_client.frt_resumen_equipos(start, end)
 
-    st.subheader("Detalle de tiempo de primera respuesta")
     rows = frt_data.get("data", frt_data) if isinstance(frt_data, dict) else frt_data
     df = pd.DataFrame(rows)
     if not df.empty:
@@ -257,9 +256,9 @@ def render():
             styler = table_df.style.apply(_style_best_worst_row, axis=1)
             st.dataframe(styler, use_container_width=True)
             st.caption(
-                "Fila amarilla: casos respondidos = 0. "
-                "Fila verde: menor tiempo promedio (> 0). "
-                "Fila roja: mayor tiempo promedio (> 0)."
+                "Amarillo: ningun caso respondido."
+                "Verde: menor tiempo promedio."
+                "Rojo: mayor tiempo promedio."
             )
         else:
             st.markdown("<div class=\"kpi-info-spacer\"></div>", unsafe_allow_html=True)
@@ -270,6 +269,9 @@ def render():
     st.markdown(
         f"#### Ranking de agentes {info_icon('Ranking de agentes por tiempo de primera respuesta promedio en el rango seleccionado.')}",
         unsafe_allow_html=True,
+    )
+    render_description(
+        "Agentes rankeados por desempeño en base al tiempo de primera respuesta promedio."
     )
     rank_rows = ranking.get("data", ranking) if isinstance(ranking, dict) else ranking
     rank_df = pd.DataFrame(rank_rows)
@@ -344,8 +346,8 @@ def render():
         styler = rank_df.style.apply(_style_rank_row, axis=1)
         st.dataframe(styler, use_container_width=True)
         st.caption(
-            "Fila verde: mejor ranking (menor tiempo promedio > 0). "
-            "Fila roja: peor ranking (mayor tiempo promedio > 0)."
+            "Verde: mejor rankeado. "
+            "Rojo: peor rankeado."
         )
     else:
         st.info("Sin datos de ranking disponibles.")
@@ -359,6 +361,9 @@ def render():
     st.markdown(
         f"#### SLA por agente {info_icon('Porcentaje de respuestas dentro del SLA configurado, agrupado por agente. Colores: amarillo 70%-<90%, rojo <70%.')}",
         unsafe_allow_html=True,
+    )
+    render_description(
+        "Service Level Agreement, basado en la cantidad de tiempo que se demora en contestar un caso, se muestra los casos recibidos por empresa, la cantidad que se respondieron y la cantidad que se encuentra dentro del SLA, incluido su porcentaje. El valor de tiempo máximo de SLA se puede modificar (valor por defecto 300 segundos)."
     )
     sla_rows = sla.get("data", sla) if isinstance(sla, dict) else sla
     df_sla = pd.DataFrame(sla_rows)
@@ -430,7 +435,7 @@ def render():
         sla_agent = prepare_table(sla_agent)
         st.dataframe(_style_sla(sla_agent), use_container_width=True)
         st.caption(
-            "% SLA: verde = valor mas alto (> 0), rojo = valor mas bajo (> 0)."
+            "Verde valor SLA mas alto. Rojo valor SLA mas bajo."
         )
     else:
         st.info("Sin datos de SLA por agente.")
@@ -486,7 +491,7 @@ def render():
             sla_team = prepare_table(sla_team)
             st.dataframe(_style_sla(sla_team), use_container_width=True)
             st.caption(
-                "% SLA: verde = valor mas alto (> 0), rojo = valor mas bajo (> 0)."
+                "Verde valor SLA mas alto. Rojo valor SLA mas bajo."
             )
         else:
             st.info("Sin datos de SLA por empresa.")
@@ -496,6 +501,9 @@ def render():
     st.markdown(
         f"#### Resumen por agentes {info_icon('Resumen por agente con tiempos promedio, mediana y p90 en el rango.')}",
         unsafe_allow_html=True,
+    )
+    render_description(
+        "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90 porciento de los casos)."
     )
     agents_rows = resumen_agentes.get("data", resumen_agentes) if isinstance(resumen_agentes, dict) else resumen_agentes
     df_agents = pd.DataFrame(agents_rows)
@@ -525,6 +533,9 @@ def render():
     st.markdown(
         f"#### Resumen por empresas {info_icon('Resumen por empresa con tiempos promedio, mediana y p90 en el rango.')}",
         unsafe_allow_html=True,
+    )
+    render_description(
+        "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90 porciento de los casos)."
     )
     teams_rows = resumen_equipos.get("data", resumen_equipos) if isinstance(resumen_equipos, dict) else resumen_equipos
     df_teams = pd.DataFrame(teams_rows)

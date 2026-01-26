@@ -363,3 +363,17 @@ def casos_abandonados_24h(
     if as_of:
         params["as_of"] = as_of
     return get_json("/metrics/casos-abandonados-24h", params)
+
+
+def casos_pendientes(
+    desde: date, hasta: date, team_uuid: str = "", agent_email: str = ""
+) -> Dict[str, Any]:
+    return get_json(
+        "/metrics/casos-pendientes",
+        {
+            "desde": str(desde),
+            "hasta": str(hasta),
+            "team_uuid": team_uuid,
+            "agent_email": agent_email,
+        },
+    )

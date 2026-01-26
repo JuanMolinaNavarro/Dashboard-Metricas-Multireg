@@ -5,7 +5,7 @@ import streamlit as st
 import streamlit_shadcn_ui as ui
 
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, info_icon, prepare_table, quick_range
+from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, info_icon, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -158,6 +158,9 @@ def render():
                 f"#### Detalle por empresa {info_icon('Detalle diario filtrado por empresa en el rango seleccionado.')}",
                 unsafe_allow_html=True,
             )
+            render_description(
+                "Muestra la duración de las conversaciones por WhatsApp, desde que el cliente manda el primer mensaje hasta que el asesor cierra la conversación. Se puede ver la duración promedio, mediana y percentil 90 (la duración promedio en el 90% de los casos) por agente y por cada día registrado del rango de tiempo seleccionado."
+            )
             st.dataframe(prepare_table(df), use_container_width=True)
         else:
             st.markdown("<div class=\"kpi-info-spacer\"></div>", unsafe_allow_html=True)
@@ -168,6 +171,9 @@ def render():
     st.markdown(
         f"#### Resumen por agentes {info_icon('Resumen por agente con duraciones promedio, mediana y p90 en el rango.')}",
         unsafe_allow_html=True,
+    )
+    render_description(
+        "Duración promedio, mediana y percentil 90 de las conversaciones en total por cada agente resumido para el rango de tiempo seleccionado."
     )
     agents_rows = resumen_agentes.get("data", resumen_agentes) if isinstance(resumen_agentes, dict) else resumen_agentes
     df_agents = pd.DataFrame(agents_rows)
@@ -199,6 +205,9 @@ def render():
     st.markdown(
         f"#### Resumen por empresas {info_icon('Resumen por empresa con duraciones promedio, mediana y p90 en el rango.')}",
         unsafe_allow_html=True,
+    )
+    render_description(
+        "Duración promedio, mediana y percentil 90 de las conversaciones en total por cada unidad resumida para el rango de tiempo seleccionado."
     )
     teams_rows = resumen_equipos.get("data", resumen_equipos) if isinstance(resumen_equipos, dict) else resumen_equipos
     df_teams = pd.DataFrame(teams_rows)

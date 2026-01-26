@@ -9,7 +9,7 @@ import streamlit_shadcn_ui as ui
 
 from config import DEFAULT_MAX_SECONDS
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, format_seconds, info_icon, prepare_table, quick_range
+from helpers.utils import date_range_picker, format_seconds, info_icon, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -86,6 +86,7 @@ def render():
         casos_resueltos = api_client.casos_resueltos(start, end, "", "")
         casos_abandonados = api_client.casos_abandonados_24h(start, end, "", "", "")
     resumen = api_client.metrics_casos_atendidos_resumen(start, end)
+    pendientes = api_client.casos_pendientes(start, end, "", "")
 
     if isinstance(resumen, dict):
         entradas = float(resumen.get("conversaciones_entrantes", 0))
@@ -108,8 +109,11 @@ def render():
         donut_cols = st.columns(2, gap="large")
         with donut_cols[0]:
             st.markdown(
-                f"#### Porcentaje de conversaciones atendidas {info_icon('Porcentaje calculado como atendidas mismo dia / conversaciones entrantes del rango.')}",
+                f"#### Porcentaje de Conversaciones Atendidas en el mismo día{info_icon('Porcentaje calculado como atendidas mismo dia / conversaciones entrantes del rango.')}",
                 unsafe_allow_html=True,
+            )
+            render_description(
+                "Porcentaje de conversaciones entrantes que fueron atendidas en el mismo día en el que ingresaron. (Verde mayor o igual a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
             )
             fig = px.pie(donut_df, names="segmento", values="valor", hole=0.6)
             fig.update_traces(
@@ -136,8 +140,19 @@ def render():
                 f"#### Distribucion de casos por Unidad {info_icon('Distribucion del total de casos recibidos por empresa en el rango.')}",
                 unsafe_allow_html=True,
             )
+            render_description(
+                "Porciones del total de mensajes que recibe cada unidad. CCC es atendido por 8 agentes, mientras que el resto de unidades es atendido por 7 agentes."
+            )
 
-        kpi_cols = st.columns(2)
+        pend_rows = pendientes.get("data", pendientes) if isinstance(pendientes, dict) else pendientes
+        df_pend = pd.DataFrame(pend_rows)
+        casos_pendientes = (
+            float(df_pend["casos_pendientes"].sum())
+            if not df_pend.empty and "casos_pendientes" in df_pend.columns
+            else 0
+        )
+
+        kpi_cols = st.columns(3)
         with kpi_cols[0]:
             st.markdown(
                 f"""
@@ -149,6 +164,16 @@ def render():
                 unsafe_allow_html=True,
             )
         with kpi_cols[1]:
+            st.markdown(
+                f"""
+<div class="kpi-card">
+  <div style="font-size: 14px; opacity: 0.8;">Casos Pendientes {info_icon('Total de casos pendientes en el rango seleccionado.')}</div>
+  <div style="font-size: 32px; font-weight: 700;">{int(casos_pendientes)}</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        with kpi_cols[2]:
             st.markdown(
                 f"""
 <div class="kpi-card">
@@ -294,6 +319,10 @@ def render():
                 }
             )
             empresa_table = empresa_table[["Empresa", "Casos Recibidos", "Casos Resueltos", "% Resueltos"]]
+            if "Casos Recibidos" in empresa_table.columns:
+                empresa_table["Casos Recibidos"] = (
+                    empresa_table["Casos Recibidos"].fillna(0).astype(int)
+                )
             pie_df = empresa_table.copy()
             pie_df = pie_df[pie_df["Casos Recibidos"] > 0]
             if not pie_df.empty:
@@ -310,8 +339,11 @@ def render():
                 with donut_cols[1]:
                     st.plotly_chart(fig_empresas, use_container_width=True)
             st.markdown(
-                f"#### Resumen por empresa {info_icon('Totales por empresa usando los endpoints de Casos.')}",
+                f"#### Resumen por unidad: Resoluciones {info_icon('Totales por empresa usando los endpoints de Casos.')}",
                 unsafe_allow_html=True,
+            )
+            render_description(
+                "Cantidad de casos recibidos y resueltos mostrando su porcentaje de resolución, en el rango de tiempo establecido por Unidad."
             )
             st.dataframe(_style_resueltos(prepare_table(empresa_table)), use_container_width=True)
             st.caption("% Resueltos: verde >= 85%, amarillo 75% - 85%, rojo < 75%.")
@@ -330,9 +362,16 @@ def render():
                 }
             )
             agente_table = agente_table[["Agente", "Casos Recibidos", "Casos Resueltos", "% Resueltos"]]
+            if "Casos Recibidos" in agente_table.columns:
+                agente_table["Casos Recibidos"] = (
+                    agente_table["Casos Recibidos"].fillna(0).astype(int)
+                )
             st.markdown(
-                f"#### Resumen por agente {info_icon('Totales por agente usando los endpoints de Casos.')}",
+                f"#### Resumen por agente: Resoluciones {info_icon('Totales por agente usando los endpoints de Casos.')}",
                 unsafe_allow_html=True,
+            )
+            render_description(
+                "Cantidad de casos recibidos y resueltos mostrando su porcentaje de resolución, en el rango de tiempo establecido por cada Agente."
             )
             st.dataframe(_style_resueltos(prepare_table(agente_table)), use_container_width=True)
             st.caption("% Resueltos: verde >= 85%, amarillo 75% - 85%, rojo < 75%.")
@@ -363,11 +402,14 @@ def render():
             return styler
 
         st.markdown(
-            f"#### SLA por empresa {info_icon('Porcentaje de respuestas dentro del SLA configurado, agrupado por empresa.')}",
+            f"#### SLA por unidad {info_icon('Porcentaje de respuestas dentro del SLA configurado, agrupado por empresa.')}",
             unsafe_allow_html=True,
         )
+        render_description(
+            "Service Level Agreement, basado en la cantidad de tiempo que se demora en contestar un caso, se muestra los casos recibidos por empresa, la cantidad que se respondieron y la cantidad que se encuentra dentro del rango del SLA, incluido su porcentaje. El valor de tiempo maximo de SLA se puede modificar (valor por defecto 300 segundos)."
+        )
         max_seconds = st.text_input(
-            "SLA max segundos",
+            "Cantidad de segundos maximos de SLA",
             value=str(DEFAULT_MAX_SECONDS),
             key="casos_atendidos_sla_max_seconds",
         )
@@ -441,8 +483,11 @@ def render():
         )
 
         st.markdown(
-            f"#### Resumen por empresas {info_icon('Resumen por empresa con tiempos promedio, mediana y p90 en el rango.')}",
+            f"#### Resumen por empresas: Tiempo de primera respuesta {info_icon('Resumen por empresa con tiempos promedio, mediana y p90 en el rango.')}",
             unsafe_allow_html=True,
+        )
+        render_description(
+            "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90% de los casos)."
         )
         resumen_equipos = api_client.frt_resumen_equipos(start, end)
         teams_rows = (
@@ -475,6 +520,9 @@ def render():
         st.markdown(
             f"#### Detalle por dia {info_icon('Detalle diario de conversaciones entrantes y atendidas mismo dia en el rango.')}",
             unsafe_allow_html=True,
+        )
+        render_description(
+            "Cantidad de conversaciones entrantes comparada con la cantidad de conversaciones atendidas en ese mismo día, junto con su porcentaje correspondiente."
         )
         table_df = prepare_table(df)
         st.dataframe(_style_atendidas(table_df), use_container_width=True)

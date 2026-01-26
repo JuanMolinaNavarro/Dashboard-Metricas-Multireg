@@ -61,6 +61,10 @@ def info_icon(text: str) -> str:
     )
 
 
+def render_description(text: str) -> None:
+    st.markdown(f"<div class=\"desc-text\">{text}</div>", unsafe_allow_html=True)
+
+
 def prepare_table(df):
     if df is None or df.empty:
         return df

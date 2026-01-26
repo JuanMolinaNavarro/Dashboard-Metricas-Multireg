@@ -6,7 +6,7 @@ import streamlit as st
 import streamlit_shadcn_ui as ui
 
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, exclude_agent_rows, info_icon, prepare_table, quick_range
+from helpers.utils import date_range_picker, exclude_agent_rows, info_icon, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -247,14 +247,20 @@ def render():
     donut_cols = st.columns(2)
     with donut_cols[0]:
         st.markdown(
-            f"#### Promedio % Casos Resueltos {info_icon('Promedio ponderado: total de casos resueltos dividido por el total de casos abiertos del rango.')}",
+            f"#### Porcentaje de Casos Resueltos {info_icon('Promedio ponderado: total de casos resueltos dividido por el total de casos abiertos del rango.')}",
             unsafe_allow_html=True,
+        )
+        render_description(
+            "Porcentaje sobre el total de casos registrados en el rango de tiempo seleccionado que se hayan resuelto finalmente, sean a tiempo o no lo sean."
         )
         _donut(pct_resueltos)
     with donut_cols[1]:
         st.markdown(
-            f"#### Promedio % Casos Abandonados {info_icon('Promedio ponderado: casos abandonados en 24h dividido por casos abiertos del rango.')}",
+            f"#### Porcentaje de Casos Abandonados {info_icon('Promedio ponderado: casos abandonados en 24h dividido por casos abiertos del rango.')}",
             unsafe_allow_html=True,
+        )
+        render_description(
+            "Porcentaje sobre el total de casos registrados en el rango de tiempo en el que el cliente no obtuvo una respuesta por 24 horas o más."
         )
         _donut(pct_abandonados)
 
@@ -273,8 +279,8 @@ def render():
     team_display = prepare_table(team_display)
     st.dataframe(_style_casos(team_display), use_container_width=True)
     st.caption(
-        "% Resueltos: verde > 90%, amarillo 80% - 90%, rojo < 80%. "
-        "% Abandonados: verde < 15%, amarillo 15% - 25%, rojo > 25%."
+        "% Resueltos: Verde mas del 90%, Amarillo entre 80% - 90%, Rojo menos del 80%. | "
+        "% Abandonados: Verde menos del 15%, Amarillo entre 15% - 25%, Rojo más del 25%."
     )
 
     st.markdown(
@@ -285,7 +291,7 @@ def render():
     agent_display = prepare_table(agent_display)
     st.dataframe(_style_casos(agent_display), use_container_width=True)
     st.caption(
-        "% Resueltos: verde > 90%, amarillo 80% - 90%, rojo < 80%. "
+        "% Resueltos: verde > 90%, amarillo 80% - 90%, rojo < 80%. | "
         "% Abandonados: verde < 15%, amarillo 15% - 25%, rojo > 25%."
     )
 
