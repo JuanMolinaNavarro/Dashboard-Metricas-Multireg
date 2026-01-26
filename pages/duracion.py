@@ -5,7 +5,7 @@ import streamlit as st
 import streamlit_shadcn_ui as ui
 
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, info_icon, prepare_table, quick_range, render_description
+from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -18,7 +18,7 @@ def _init_state(key: str):
 
 
 def render():
-    st.header("Duracion Promedio")
+    st.header("Duracion")
 
     _init_state("duracion_range")
     start, end = st.session_state["duracion_range"]
@@ -107,7 +107,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Duracion (Mediana) {info_icon('Promedio de la mediana de duracion para el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Duracion (Mediana)</div>
   <div style="font-size: 32px; font-weight: 700;">{format_seconds(mediana)}</div>
 </div>
 """,
@@ -117,7 +117,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Duracion (Promedio) {info_icon('Promedio de duracion para el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Duracion (Promedio)</div>
   <div style="font-size: 32px; font-weight: 700;">{format_seconds(promedio)}</div>
 </div>
 """,
@@ -127,7 +127,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Duracion (Percentil 90) {info_icon('Promedio del percentil 90 de duracion para el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Duracion (Percentil 90)</div>
   <div style="font-size: 32px; font-weight: 700;">{format_seconds(p90)}</div>
 </div>
 """,
@@ -154,10 +154,7 @@ def render():
                     "p90_duration_seconds": "Duracion P90 (s)",
                 }
             )
-            st.markdown(
-                f"#### Detalle por empresa {info_icon('Detalle diario filtrado por empresa en el rango seleccionado.')}",
-                unsafe_allow_html=True,
-            )
+            st.markdown("#### Detalle por empresa")
             render_description(
                 "Muestra la duración de las conversaciones por WhatsApp, desde que el cliente manda el primer mensaje hasta que el asesor cierra la conversación. Se puede ver la duración promedio, mediana y percentil 90 (la duración promedio en el 90% de los casos) por agente y por cada día registrado del rango de tiempo seleccionado."
             )
@@ -168,10 +165,7 @@ def render():
     else:
         st.info("Sin datos para el rango seleccionado.")
 
-    st.markdown(
-        f"#### Resumen por agentes {info_icon('Resumen por agente con duraciones promedio, mediana y p90 en el rango.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Resumen por agentes")
     render_description(
         "Duración promedio, mediana y percentil 90 de las conversaciones en total por cada agente resumido para el rango de tiempo seleccionado."
     )
@@ -202,10 +196,7 @@ def render():
     else:
         st.info("Sin datos por agentes.")
 
-    st.markdown(
-        f"#### Resumen por empresas {info_icon('Resumen por empresa con duraciones promedio, mediana y p90 en el rango.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Resumen por empresas")
     render_description(
         "Duración promedio, mediana y percentil 90 de las conversaciones en total por cada unidad resumida para el rango de tiempo seleccionado."
     )

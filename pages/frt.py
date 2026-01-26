@@ -6,7 +6,7 @@ import streamlit_shadcn_ui as ui
 
 from config import DEFAULT_FRT_LIMIT, DEFAULT_MAX_SECONDS
 from helpers import api_client
-from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, info_icon, prepare_table, quick_range, render_description
+from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -133,7 +133,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Casos Abiertos {info_icon('Total de casos abiertos para la empresa seleccionada en el rango.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Casos Abiertos</div>
   <div style="font-size: 32px; font-weight: 700;">{int(casos_abiertos)}</div>
 </div>
 """,
@@ -143,7 +143,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Tiempo de primera respuesta (Promedio) {info_icon('Promedio de tiempo de primera respuesta en el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Tiempo de primera respuesta (Promedio)</div>
   <div style="font-size: 32px; font-weight: 700;">{format_seconds(avg_val)}</div>
 </div>
 """,
@@ -153,7 +153,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Tiempo de primera respuesta (Mediana) {info_icon('Mediana del tiempo de primera respuesta en el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Tiempo de primera respuesta (Mediana)</div>
   <div style="font-size: 32px; font-weight: 700;">{format_seconds(median_val)}</div>
 </div>
 """,
@@ -163,7 +163,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Tiempo de primera respuesta (Percentil 90) {info_icon('Percentil 90 del tiempo de primera respuesta en el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Tiempo de primera respuesta (Percentil 90)</div>
   <div style="font-size: 32px; font-weight: 700;">{format_seconds(p90_val)}</div>
 </div>
 """,
@@ -194,10 +194,7 @@ def render():
                     "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
                 }
             )
-            st.markdown(
-                f"#### Detalle por empresa {info_icon('Detalle diario de tiempos por empresa en el rango seleccionado.')}",
-                unsafe_allow_html=True,
-            )
+            st.markdown("#### Detalle por empresa")
 
             def _style_best_worst(row):
                 if min_avg is None or max_avg is None:
@@ -266,10 +263,7 @@ def render():
     else:
         st.info("Sin datos para el rango seleccionado.")
 
-    st.markdown(
-        f"#### Ranking de agentes {info_icon('Ranking de agentes por tiempo de primera respuesta promedio en el rango seleccionado.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Ranking de agentes")
     render_description(
         "Agentes rankeados por desempeño en base al tiempo de primera respuesta promedio."
     )
@@ -358,10 +352,7 @@ def render():
         key="frt_max_seconds",
     )
     sla = api_client.frt_sla(start, end, int(max_seconds), team_uuid, agent_email)
-    st.markdown(
-        f"#### SLA por agente {info_icon('Porcentaje de respuestas dentro del SLA configurado, agrupado por agente. Colores: amarillo 70%-<90%, rojo <70%.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### SLA por agente")
     render_description(
         "Service Level Agreement, basado en la cantidad de tiempo que se demora en contestar un caso, se muestra los casos recibidos por empresa, la cantidad que se respondieron y la cantidad que se encuentra dentro del SLA, incluido su porcentaje. El valor de tiempo máximo de SLA se puede modificar (valor por defecto 300 segundos)."
     )
@@ -440,10 +431,7 @@ def render():
     else:
         st.info("Sin datos de SLA por agente.")
 
-    st.markdown(
-        f"#### SLA por empresa {info_icon('Porcentaje de respuestas dentro del SLA configurado, agrupado por empresa. Colores: amarillo 70%-<90%, rojo <70%.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### SLA por empresa")
     if not df_sla.empty:
         team_key = "team_name" if "team_name" in df_sla.columns else "team_uuid"
         if team_key in df_sla.columns:
@@ -498,10 +486,7 @@ def render():
     else:
         st.info("Sin datos de SLA por empresa.")
 
-    st.markdown(
-        f"#### Resumen por agentes {info_icon('Resumen por agente con tiempos promedio, mediana y p90 en el rango.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Resumen por agentes")
     render_description(
         "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90 porciento de los casos)."
     )
@@ -530,10 +515,7 @@ def render():
     else:
         st.info("Sin datos por agentes.")
 
-    st.markdown(
-        f"#### Resumen por empresas {info_icon('Resumen por empresa con tiempos promedio, mediana y p90 en el rango.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Resumen por empresas")
     render_description(
         "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90 porciento de los casos)."
     )

@@ -6,7 +6,7 @@ import streamlit as st
 import streamlit_shadcn_ui as ui
 
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, exclude_agent_rows, info_icon, prepare_table, quick_range, render_description
+from helpers.utils import date_range_picker, exclude_agent_rows, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -19,7 +19,7 @@ def _init_state(key: str):
 
 
 def render():
-    st.header("Casos")
+    st.header("Abandonos")
 
     _init_state("casos_range")
     start, end = st.session_state["casos_range"]
@@ -246,28 +246,19 @@ def render():
 
     donut_cols = st.columns(2)
     with donut_cols[0]:
-        st.markdown(
-            f"#### Porcentaje de Casos Resueltos {info_icon('Promedio ponderado: total de casos resueltos dividido por el total de casos abiertos del rango.')}",
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### Porcentaje de Casos Resueltos")
         render_description(
             "Porcentaje sobre el total de casos registrados en el rango de tiempo seleccionado que se hayan resuelto finalmente, sean a tiempo o no lo sean."
         )
         _donut(pct_resueltos)
     with donut_cols[1]:
-        st.markdown(
-            f"#### Porcentaje de Casos Abandonados {info_icon('Promedio ponderado: casos abandonados en 24h dividido por casos abiertos del rango.')}",
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### Porcentaje de Casos Abandonados")
         render_description(
             "Porcentaje sobre el total de casos registrados en el rango de tiempo en el que el cliente no obtuvo una respuesta por 24 horas o más."
         )
         _donut(pct_abandonados)
 
-    st.markdown(
-        f"#### Resumen por empresa {info_icon('Suma de casos abiertos, resueltos y abandonados por empresa. Porcentajes = casos / abiertos.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Resumen por empresa")
     if "team_uuid" in team_table.columns:
         team_table = team_table.drop(columns=["team_uuid"])
     if "team_uuid" in agent_table.columns:
@@ -283,10 +274,7 @@ def render():
         "% Abandonados: Verde menos del 15%, Amarillo entre 15% - 25%, Rojo más del 25%."
     )
 
-    st.markdown(
-        f"#### Resumen por agente {info_icon('Suma de casos abiertos, resueltos y abandonados por agente. Porcentajes = casos / abiertos.')}",
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Resumen por agente")
     agent_display = _format_table(agent_table, agent_key)
     agent_display = prepare_table(agent_display)
     st.dataframe(_style_casos(agent_display), use_container_width=True)

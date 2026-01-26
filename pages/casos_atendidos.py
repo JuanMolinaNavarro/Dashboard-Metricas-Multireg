@@ -9,7 +9,7 @@ import streamlit_shadcn_ui as ui
 
 from config import DEFAULT_MAX_SECONDS
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, format_seconds, info_icon, prepare_table, quick_range, render_description
+from helpers.utils import date_range_picker, format_seconds, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -20,7 +20,7 @@ def _init_state(key: str):
 
 
 def render():
-    st.header("Casos Atendidos")
+    st.header("Inicio")
 
     _init_state("casos_atendidos_range")
     start, end = st.session_state["casos_atendidos_range"]
@@ -108,10 +108,7 @@ def render():
         )
         donut_cols = st.columns(2, gap="large")
         with donut_cols[0]:
-            st.markdown(
-                f"#### Porcentaje de Conversaciones Atendidas en el mismo día{info_icon('Porcentaje calculado como atendidas mismo dia / conversaciones entrantes del rango.')}",
-                unsafe_allow_html=True,
-            )
+            st.markdown("#### Porcentaje de Conversaciones Atendidas en el mismo día")
             render_description(
                 "Porcentaje de conversaciones entrantes que fueron atendidas en el mismo día en el que ingresaron. (Verde mayor o igual a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
             )
@@ -136,10 +133,7 @@ def render():
             )
             st.plotly_chart(fig, use_container_width=True)
         with donut_cols[1]:
-            st.markdown(
-                f"#### Distribucion de casos por Unidad {info_icon('Distribucion del total de casos recibidos por empresa en el rango.')}",
-                unsafe_allow_html=True,
-            )
+            st.markdown("#### Distribucion de casos por Unidad")
             render_description(
                 "Porciones del total de mensajes que recibe cada unidad. CCC es atendido por 8 agentes, mientras que el resto de unidades es atendido por 7 agentes."
             )
@@ -157,7 +151,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Conversaciones entrantes {info_icon('Total de conversaciones entrantes en el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Conversaciones entrantes</div>
   <div style="font-size: 32px; font-weight: 700;">{int(entradas)}</div>
 </div>
 """,
@@ -167,7 +161,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Casos Pendientes {info_icon('Total de casos pendientes en el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Casos Pendientes</div>
   <div style="font-size: 32px; font-weight: 700;">{int(casos_pendientes)}</div>
 </div>
 """,
@@ -177,7 +171,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Atendidas mismo dia {info_icon('Total de conversaciones atendidas el mismo dia en el rango seleccionado.')}</div>
+  <div style="font-size: 14px; opacity: 0.8;">Atendidas mismo dia</div>
   <div style="font-size: 32px; font-weight: 700;">{int(atendidas)}</div>
 </div>
 """,
@@ -338,15 +332,12 @@ def render():
                 fig_empresas.update_layout(margin=dict(l=0, r=0, t=0, b=0))
                 with donut_cols[1]:
                     st.plotly_chart(fig_empresas, use_container_width=True)
-            st.markdown(
-                f"#### Resumen por unidad: Resoluciones {info_icon('Totales por empresa usando los endpoints de Casos.')}",
-                unsafe_allow_html=True,
-            )
+            st.markdown("#### Resumen por unidad: Resoluciones")
             render_description(
                 "Cantidad de casos recibidos y resueltos mostrando su porcentaje de resolución, en el rango de tiempo establecido por Unidad."
             )
             st.dataframe(_style_resueltos(prepare_table(empresa_table)), use_container_width=True)
-            st.caption("% Resueltos: verde >= 85%, amarillo 75% - 85%, rojo < 75%.")
+            st.caption("% Resueltos: Verde mayor o igual a 85%, Amarillo entre 75% y 85%, Rojo menor al 75%.")
         else:
             st.info("No hay datos por empresa para este endpoint.")
 
@@ -366,15 +357,12 @@ def render():
                 agente_table["Casos Recibidos"] = (
                     agente_table["Casos Recibidos"].fillna(0).astype(int)
                 )
-            st.markdown(
-                f"#### Resumen por agente: Resoluciones {info_icon('Totales por agente usando los endpoints de Casos.')}",
-                unsafe_allow_html=True,
-            )
+            st.markdown("#### Resumen por agente: Resoluciones")
             render_description(
                 "Cantidad de casos recibidos y resueltos mostrando su porcentaje de resolución, en el rango de tiempo establecido por cada Agente."
             )
             st.dataframe(_style_resueltos(prepare_table(agente_table)), use_container_width=True)
-            st.caption("% Resueltos: verde >= 85%, amarillo 75% - 85%, rojo < 75%.")
+            st.caption("% Resueltos: Verde mayor o igual a 85%, Amarillo entre 75% y 85%, Rojo menor al 75%.")
         else:
             st.info("No hay datos por agente para este endpoint.")
 
@@ -401,10 +389,7 @@ def render():
             styler = styler.format({"% SLA": "{:.2f}"})
             return styler
 
-        st.markdown(
-            f"#### SLA por unidad {info_icon('Porcentaje de respuestas dentro del SLA configurado, agrupado por empresa.')}",
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### SLA por unidad")
         render_description(
             "Service Level Agreement, basado en la cantidad de tiempo que se demora en contestar un caso, se muestra los casos recibidos por empresa, la cantidad que se respondieron y la cantidad que se encuentra dentro del rango del SLA, incluido su porcentaje. El valor de tiempo maximo de SLA se puede modificar (valor por defecto 300 segundos)."
         )
@@ -472,20 +457,13 @@ def render():
                         sla_team = sla_team[cols]
                 sla_team = prepare_table(sla_team)
                 st.dataframe(_style_sla(sla_team), use_container_width=True)
-                st.caption("% SLA: verde = valor mas alto (> 0), rojo = valor mas bajo (> 0).")
+                st.caption("Verde valor mas alto en %SLA, Rojo valor mas bajo en %SLA.")
             else:
                 st.info("Sin datos de SLA por empresa.")
         else:
             st.info("Sin datos de SLA por empresa.")
 
-        st.markdown(
-            "Objetivo: % Atendidas >= 90% (verde), entre 80% y 90% (amarillo), menor a 80% (rojo)."
-        )
-
-        st.markdown(
-            f"#### Resumen por empresas: Tiempo de primera respuesta {info_icon('Resumen por empresa con tiempos promedio, mediana y p90 en el rango.')}",
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### Resumen por empresas: Tiempo de primera respuesta")
         render_description(
             "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90% de los casos)."
         )
@@ -517,16 +495,16 @@ def render():
         else:
             st.info("Sin datos por empresas.")
 
-        st.markdown(
-            f"#### Detalle por dia {info_icon('Detalle diario de conversaciones entrantes y atendidas mismo dia en el rango.')}",
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### Detalle por dia")
         render_description(
             "Cantidad de conversaciones entrantes comparada con la cantidad de conversaciones atendidas en ese mismo día, junto con su porcentaje correspondiente."
         )
+        st.markdown(
+            "Objetivo: Porcentaje de casos atendidos en el mismo dia sea mayor al 90% (verde), luego si esta entre 80% y 90% (amarillo), menor a 80% (rojo)."
+        )
         table_df = prepare_table(df)
         st.dataframe(_style_atendidas(table_df), use_container_width=True)
-        st.caption("% Atendidas: verde >= 90%, amarillo 80% - 90%, rojo < 80%.")
+        st.caption("% Atendidas: Verde mayor o igual a 90%, Amarillo 80% entre 90%, Rojo menos del 80%.")
         if "fecha" in df.columns and "total" in df.columns:
             fig = charts.line_chart(df, x="fecha", y="total", title="Casos atendidos")
             st.plotly_chart(fig, use_container_width=True)
