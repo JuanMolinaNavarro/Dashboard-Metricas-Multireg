@@ -205,3 +205,18 @@ div[data-testid="stButton"] button:focus {
   color: #9ca3af;
   margin: 6px 0 10px 0;
 }
+/* Tabs responsive */
+div[data-testid="stTabs"] {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+@media (max-width: 768px) {
+  div[data-testid="stTabs"] button {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    min-width: fit-content;
+    white-space: nowrap;
+  }
+}

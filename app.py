@@ -22,10 +22,15 @@ st.title(APP_TITLE)
 if "main_tabs" not in st.session_state:
     st.session_state["main_tabs"] = "Inicio"
 
-selected_tab = ui.tabs(
+# Usar selectbox para mejor experiencia mobile
+selected_tab = st.selectbox(
+    "Sección",
     ["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos"],
-    default="Inicio",
+    index=["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos"].index(
+        st.session_state["main_tabs"]
+    ),
     key="main_tabs",
+    label_visibility="collapsed",
 )
 
 if selected_tab == "Inicio":
