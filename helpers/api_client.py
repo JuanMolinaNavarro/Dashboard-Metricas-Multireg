@@ -20,6 +20,41 @@ def get_json(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, An
     return response.json()
 
 
+def login(username: str, password: str) -> Dict[str, Any]:
+    url = f"{API_BASE_URL}/auth/login"
+    response = requests.post(url, json={"username": username, "password": password}, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def create_user(payload: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{API_BASE_URL}/users"
+    response = requests.post(url, json=payload, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def update_user(user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{API_BASE_URL}/users/{user_id}"
+    response = requests.put(url, json=payload, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def deactivate_user(user_id: int) -> Dict[str, Any]:
+    url = f"{API_BASE_URL}/users/{user_id}/deactivate"
+    response = requests.patch(url, json={}, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def list_users() -> Dict[str, Any]:
+    url = f"{API_BASE_URL}/users"
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
 def _recent_range(days: int) -> tuple[date, date]:
     end = date.today()
     start = end - timedelta(days=days)

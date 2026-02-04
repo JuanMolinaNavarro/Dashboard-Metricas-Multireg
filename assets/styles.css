@@ -15,6 +15,30 @@ body {
   padding-top: 2rem;
 }
 
+.login-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 10vh auto 12px auto;
+  width: min(320px, 88vw);
+  text-align: center;
+  color: var(--text-main);
+}
+
+.login-form {
+  width: min(320px, 88vw);
+  margin: 0 auto 0 auto;
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.25);
+}
+
+.login-form div[data-testid="stButton"] button {
+  width: 100%;
+  height: 38px;
+}
+
 .kpi-card {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -107,6 +131,28 @@ body {
   color: var(--text-main);
 }
 
+.header-user-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  justify-content: flex-end !important;
+}
+
+.header-user-row > div[data-testid="stColumn"] {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.header-user-row .header-user-name {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-right: 2px;
+}
+
 .team-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -164,6 +210,18 @@ div[data-testid="stButton"] button {
   color: inherit;
 }
 
+.header-user-row div[data-testid="stButton"] button {
+  padding: 0 12px;
+  height: 34px;
+  width: auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+
 div[data-testid="stButton"] button:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
@@ -218,5 +276,29 @@ div[data-testid="stTabs"] {
     font-size: 12px !important;
     min-width: fit-content;
     white-space: nowrap;
+  }
+
+  /* Header mobile responsive */
+  .header-user-row {
+    display: block !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    justify-content: flex-start !important;
+  }
+
+  .header-user-row > div[data-testid="stColumn"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    margin: 4px 0 !important;
+  }
+
+  .header-user-name {
+    display: none !important;
+  }
+
+  .header-user-row div[data-testid="stButton"] button {
+    width: 100% !important;
+    font-size: 12px !important;
+    height: 36px !important;
   }
 }
