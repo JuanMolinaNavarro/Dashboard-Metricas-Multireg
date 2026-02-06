@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 import requests
 
 from config import APP_TITLE
-from pages import casos_atendidos, casos, duracion, frt, admin_panel
+from pages import casos_atendidos, casos, duracion, frt, admin_panel, llamadas
 from helpers.api_client import login
 
 
@@ -151,8 +151,8 @@ if st.session_state.get("show_admin_panel"):
 # Usar selectbox para mejor experiencia mobile
 selected_tab = st.selectbox(
     "Sección",
-    ["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos"],
-    index=["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos"].index(
+    ["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos", "Llamadas"],
+    index=["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos", "Llamadas"].index(
         st.session_state["main_tabs"]
     ),
     key="main_tabs",
@@ -167,3 +167,5 @@ elif selected_tab == "Duracion":
     duracion.render()
 elif selected_tab == "Abandonos":
     casos.render()
+elif selected_tab == "Llamadas":
+    llamadas.render()

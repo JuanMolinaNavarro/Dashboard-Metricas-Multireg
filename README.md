@@ -5,11 +5,13 @@ Dashboard web en Streamlit para consumir los endpoints de metricas del callcente
 ## Estructura
 
 ```
-my_dashboard/
+Dashboard-Metricas-Multireg/
 ├── app.py
 ├── config.py
 ├── requirements.txt
 ├── README.md
+├── data/
+│  └── .gitkeep
 ├── helpers/
 │  ├── __init__.py
 │  ├── api_client.py
@@ -21,7 +23,10 @@ my_dashboard/
 │  ├── casos_atendidos.py
 │  ├── frt.py
 │  ├── duracion.py
-│  └── casos.py
+│  ├── casos.py
+│  └── llamadas.py
+├── scripts/
+│  └── fetch_llamadas.py
 ├── assets/
 │  └── styles.css
 ├── tests/
@@ -48,6 +53,12 @@ pip install -r requirements.txt
 
 - Variable de entorno opcional:
   - `API_BASE_URL` (por defecto `http://localhost:8000`)
+- Variables para el script de llamadas:
+  - `CALLS_BASE_URL` (por defecto `https://10.0.116.10`)
+  - `CALLS_USER` / `CALLS_PASS` (credenciales del sistema)
+  - `CALLS_DATE_START` (por defecto `10+Jul+2025`)
+  - `CALLS_OUTPUT_DIR` (por defecto `./data`)
+  - `CALLS_VERIFY_SSL` (`true/false`, por defecto `false`)
 
 ## Ejecutar
 
@@ -57,10 +68,31 @@ streamlit run app.py
 
 ## UI
 
-- Tabs principales: Casos Atendidos, Tiempo de primera respuesta, Duracion, Casos
+- Tabs principales: Casos Atendidos, Tiempo de primera respuesta, Duracion, Casos, Llamadas
 - Filtros por rango de fechas y parametros opcionales
 - KPIs con semaforos
 - Tablas y graficos interactivos
+
+## Llamadas (CSV)
+
+El script `scripts/fetch_llamadas.py` descarga y prepara dos archivos:
+- `data/reporte.csv` (satisfacción)
+- `data/detalle_llamadas.csv` (detalle de llamadas)
+
+Ejemplo de ejecución manual:
+
+```bash
+CALLS_BASE_URL=https://10.0.116.10 \
+CALLS_USER=admin \
+CALLS_PASS=******** \
+python scripts/fetch_llamadas.py
+```
+
+En servidor (cron cada 15 minutos):
+
+```bash
+*/15 * * * * cd /ruta/Tablero-metricas/Dashboard-Metricas-Multireg && CALLS_USER=admin CALLS_PASS=******** python3 scripts/fetch_llamadas.py >> /var/log/fetch_llamadas.log 2>&1
+```
 
 ## Tests
 
