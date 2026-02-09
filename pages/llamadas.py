@@ -1,7 +1,7 @@
 ﻿# -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -245,27 +245,49 @@ def _render_detalle(df: pd.DataFrame) -> None:
 def render() -> None:
     st.header("Llamadas")
 
-    cols = st.columns([5, 1])
-    with cols[1]:
-        if st.button("Actualizar", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-
-    if REPORTE_PATH.exists():
-        st.caption(
-            f"Reporte: {REPORTE_PATH.name} · actualizado {pd.to_datetime(REPORTE_PATH.stat().st_mtime, unit='s')}"
-        )
-    if DETALLE_PATH.exists():
-        st.caption(
-            f"Detalle: {DETALLE_PATH.name} · actualizado {pd.to_datetime(DETALLE_PATH.stat().st_mtime, unit='s')}"
-        )
-
     reporte_df = _load_csv(REPORTE_PATH)
     detalle_df = _load_csv(DETALLE_PATH)
 
     st.markdown("---")
 
-    range_start, range_end = date_range_picker("llamadas_range")
+    if "llamadas_range" not in st.session_state:
+        today = date.today()
+        st.session_state["llamadas_range"] = (today - timedelta(days=7), today)
+    if "llamadas_quick" not in st.session_state:
+        st.session_state["llamadas_quick"] = "Hoy"
+
+    quick_options = ["Hoy", "Ayer", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
+    quick_cols = st.columns([6, 1], gap="small")
+    with quick_cols[0]:
+        selected_quick = st.radio(
+            "Rango rapido",
+            quick_options,
+            horizontal=True,
+            key="llamadas_quick",
+        )
+    with quick_cols[1]:
+        if st.button("Actualizar", key="llamadas_refresh", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    today = date.today()
+    if selected_quick == "Hoy":
+        st.session_state["llamadas_range"] = (today, today)
+    elif selected_quick == "Ayer":
+        yesterday = today - timedelta(days=1)
+        st.session_state["llamadas_range"] = (yesterday, yesterday)
+    elif selected_quick == "Ultimos 7 dias":
+        st.session_state["llamadas_range"] = (today - timedelta(days=7), today)
+    elif selected_quick == "Ultimos 30 dias":
+        st.session_state["llamadas_range"] = (today - timedelta(days=30), today)
+
+    if selected_quick == "Personalizado":
+        range_start, range_end = date_range_picker(
+            "llamadas_range_picker", st.session_state["llamadas_range"]
+        )
+        st.session_state["llamadas_range"] = (range_start, range_end)
+    else:
+        range_start, range_end = st.session_state["llamadas_range"]
     detalle_filtrado = _filter_range(detalle_df, "Fecha", range_start, range_end)
     reporte_filtrado = _filter_range(reporte_df, "Fecha", range_start, range_end)
 

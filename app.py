@@ -47,22 +47,44 @@ if not st.session_state["authenticated"]:
         """
         <script>
           (function () {
-            const forms = window.parent.document.querySelectorAll("div[data-testid='stForm']");
-            forms.forEach((form) => {
-              const button = form.querySelector("button");
-              if (button && button.innerText.trim() === "Ingresar") {
-                form.classList.add("login-form");
-                const textInputs = form.querySelectorAll("input[type='text']");
-                const passInputs = form.querySelectorAll("input[type='password']");
-                if (textInputs[0]) {
-                  textInputs[0].setAttribute("autocomplete", "username");
-                  textInputs[0].setAttribute("name", "username");
+            const applyLoginAutocomplete = () => {
+              const forms = window.parent.document.querySelectorAll("div[data-testid='stForm']");
+              forms.forEach((form) => {
+                const button = form.querySelector("button");
+                if (button && button.innerText.trim() === "Ingresar") {
+                  form.classList.add("login-form");
+                  const usernameInputs = form.querySelectorAll(
+                    "input[type='text'][aria-label='Usuario'], input[type='text'][placeholder='usuario'], input[type='text']"
+                  );
+                  const passInputs = form.querySelectorAll("input[type='password']");
+                  if (usernameInputs[0]) {
+                    const input = usernameInputs[0];
+                    input.setAttribute("autocomplete", "username");
+                    input.setAttribute("name", "username");
+                    input.setAttribute("id", "login-username");
+                  }
+                  if (passInputs[0]) {
+                    const input = passInputs[0];
+                    input.setAttribute("autocomplete", "current-password");
+                    input.setAttribute("name", "password");
+                    input.setAttribute("id", "login-password");
+                  }
+                  const formEl = form.querySelector("form");
+                  if (formEl) {
+                    formEl.setAttribute("autocomplete", "on");
+                  }
                 }
-                if (passInputs[0]) {
-                  passInputs[0].setAttribute("autocomplete", "current-password");
-                  passInputs[0].setAttribute("name", "password");
-                }
-              }
+              });
+            };
+
+            applyLoginAutocomplete();
+
+            const observer = new MutationObserver(() => {
+              applyLoginAutocomplete();
+            });
+            observer.observe(window.parent.document.body, {
+              childList: true,
+              subtree: true,
             });
           })();
         </script>
