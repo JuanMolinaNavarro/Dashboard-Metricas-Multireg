@@ -13,6 +13,8 @@ from helpers.utils import date_range_picker, format_seconds, prepare_table, rend
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 REPORTE_PATH = DATA_DIR / "reporte.csv"
 DETALLE_PATH = DATA_DIR / "detalle_llamadas.csv"
+REPORTE_CCC_PATH = DATA_DIR / "reporte_ccc.csv"
+DETALLE_CCC_PATH = DATA_DIR / "detalle_llamadas_ccc.csv"
 
 
 @st.cache_data(ttl=900)
@@ -59,14 +61,14 @@ def _kpi(label: str, value: str, help_text: str | None = None) -> None:
             render_description(help_text)
 
 
-def _render_satisfaccion(df: pd.DataFrame) -> None:
+def _render_satisfaccion(df: pd.DataFrame, reporte_name: str) -> None:
     st.subheader("Encuestas de satisfaccion")
     render_description(
         "Puntuaciones de encuestas realizadas luego de la atencion del asesor de llamadas, "
         "separadas por asesor en la tabla y generalizadas en el grafico."
     )
     if df.empty:
-        st.info("Aún no hay datos en reporte.csv")
+        st.info(f"Aún no hay datos en {reporte_name}")
         return
 
     if "Satisfaccion" not in df.columns:
@@ -158,14 +160,14 @@ def _render_satisfaccion(df: pd.DataFrame) -> None:
         )
 
 
-def _render_detalle(df: pd.DataFrame) -> None:
+def _render_detalle(df: pd.DataFrame, detalle_name: str) -> None:
     st.subheader("Llamadas")
     render_description(
         "Informacion generalizada sobre llamadas, en los recuadros los datos son calculados por unidad, "
         "en las tablas calculadas por asesor."
     )
     if df.empty:
-        st.info("Aún no hay datos en detalle_llamadas.csv")
+        st.info(f"Aún no hay datos en {detalle_name}")
         return
 
     if "Fecha" in df.columns:
@@ -191,9 +193,9 @@ def _render_detalle(df: pd.DataFrame) -> None:
 
     if "Estado" in df.columns:
         estado_map = {
-            "success": "Resuelto",
-            "resolved": "Resuelto",
-            "resuelto": "Resuelto",
+            "success": "Atendido",
+            "resolved": "Atendido",
+            "resuelto": "Atendido",
             "abandonado": "Abandonado",
             "abandoned": "Abandonado",
             "activa": "En curso",
@@ -204,8 +206,8 @@ def _render_detalle(df: pd.DataFrame) -> None:
         estado_display = estado_norm.map(estado_map).fillna(df["Estado"])
         estado_counts = estado_display.value_counts().reset_index()
         estado_counts.columns = ["Estado", "Total"]
-        estado_colors = {"Resuelto": "#2e7d32", "Abandonado": "#d32f2f", "En curso": "#fbc02d"}
-        estado_order = ["Resuelto", "En curso", "Abandonado"]
+        estado_colors = {"Atendido": "#2e7d32", "Abandonado": "#d32f2f", "En curso": "#fbc02d"}
+        estado_order = ["Atendido", "En curso", "Abandonado"]
         fig = px.bar(
             estado_counts,
             x="Estado",
@@ -242,11 +244,223 @@ def _render_detalle(df: pd.DataFrame) -> None:
         st.dataframe(prepare_table(grouped), use_container_width=True)
 
 
+def _normalize_ccc_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    rename_map = {
+        "DuraciÃ³n": "Duración",
+        "TelÃ©fono": "Teléfono",
+        "No. de Agente": "No. de Agente",
+        "Nombre Agente": "Nombre Agente",
+    }
+    return df.rename(columns=rename_map)
+
+
+def _parse_hms(series: pd.Series) -> pd.Series:
+    return pd.to_timedelta(series, errors="coerce").dt.total_seconds().fillna(0)
+
+
+def _render_ccc_reporte(df: pd.DataFrame, reporte_name: str) -> None:
+    st.subheader("Breaks por agente el dia de hoy")
+    render_description(
+        "Resumen de breaks (administrativo, receso y total) por agente. "
+        "El grafico muestra la cantidad de segundos que los asesores pasaron en break el dia de hoy."
+    )
+    if df.empty:
+        st.info(f"Aún no hay datos en {reporte_name}")
+        return
+
+    df = _normalize_ccc_columns(df).copy()
+
+    for col in ["Hold", "Administrativo", "Receso", "Total"]:
+        if col in df.columns:
+            df[col] = _parse_hms(df[col])
+
+    if "Break Counts" in df.columns:
+        total_breaks = pd.to_numeric(df["Break Counts"], errors="coerce").fillna(0).sum()
+    else:
+        total_breaks = 0
+
+    total_admin = df["Administrativo"].sum() if "Administrativo" in df.columns else 0
+    total_receso = df["Receso"].sum() if "Receso" in df.columns else 0
+    total_tiempo = df["Total"].sum() if "Total" in df.columns else 0
+
+    kpi_cols = st.columns(4)
+    with kpi_cols[0]:
+        _kpi("Agentes", f"{len(df):,}")
+    with kpi_cols[1]:
+        _kpi("Breaks", f"{int(total_breaks):,}")
+    with kpi_cols[2]:
+        _kpi("Admin total", format_seconds(total_admin))
+    with kpi_cols[3]:
+        _kpi("Receso total", format_seconds(total_receso))
+
+    if "Nombre Agente" in df.columns and "Total" in df.columns:
+        top = df.sort_values("Total", ascending=False).head(10)
+        fig = px.bar(
+            top,
+            x="Nombre Agente",
+            y="Total",
+            text="Total",
+            color="Nombre Agente",
+        )
+        fig.update_layout(height=340, margin=dict(l=20, r=20, t=30, b=20), showlegend=False)
+        fig.update_yaxes(title="Segundos")
+        st.plotly_chart(fig, use_container_width=True)
+
+    display_cols = [
+        col
+        for col in df.columns
+        if col in {"No. de Agente", "Nombre Agente", "Break Counts", "Hold", "Administrativo", "Receso", "Total"}
+    ]
+    if display_cols:
+        df_display = df[display_cols].copy()
+        df_display = df_display.rename(columns={"Break Counts": "Cantidad de Breaks"})
+        if "Cantidad de Breaks" in df_display.columns:
+            df_display["Cantidad de Breaks"] = pd.to_numeric(
+                df_display["Cantidad de Breaks"], errors="coerce"
+            ).fillna(0)
+            df_display = df_display[df_display["Cantidad de Breaks"] > 0]
+
+        max_total = df_display["Total"].max() if "Total" in df_display.columns else None
+        min_nonzero = None
+        if "Total" in df_display.columns:
+            nonzero = df_display.loc[df_display["Total"] > 0, "Total"]
+            min_nonzero = nonzero.min() if not nonzero.empty else None
+
+        def _highlight_breaks(row: pd.Series) -> list[str]:
+            styles = [""] * len(row)
+            if "Total" not in row:
+                return styles
+            total_val = row["Total"]
+            if max_total is not None and total_val == max_total:
+                return ["color: #b71c1c; font-weight: 600;"] * len(row)
+            if min_nonzero is not None and total_val == min_nonzero:
+                return ["color: #1b5e20; font-weight: 600;"] * len(row)
+            return styles
+
+        styled = df_display.style.apply(_highlight_breaks, axis=1)
+        styled = styled.format(
+            {col: format_seconds for col in ["Hold", "Administrativo", "Receso", "Total"] if col in df_display.columns}
+        )
+        st.dataframe(styled, use_container_width=True)
+
+
+def _render_ccc_detalle(df: pd.DataFrame, detalle_name: str) -> None:
+    st.subheader("Llamadas")
+    render_description(
+        "Informacion generalizada sobre llamadas, en los recuadros los datos son calculados por unidad, "
+        "en las tablas calculadas por asesor. "
+    )
+    if df.empty:
+        st.info(f"Aún no hay datos en {detalle_name}")
+        return
+
+    df = _normalize_ccc_columns(df).copy()
+
+    if "Hora Inicio" in df.columns:
+        df["Hora Inicio"] = _safe_datetime(df["Hora Inicio"])
+    if "Hora Fin" in df.columns:
+        df["Hora Fin"] = _safe_datetime(df["Hora Fin"])
+
+    if "Duración" in df.columns:
+        df["Duración"] = _parse_hms(df["Duración"])
+    else:
+        df["Duración"] = 0
+
+    if "Tiempo Espera" in df.columns:
+        df["Tiempo Espera"] = _parse_hms(df["Tiempo Espera"])
+    else:
+        df["Tiempo Espera"] = 0
+
+    kpi_cols = st.columns(3)
+    with kpi_cols[0]:
+        _kpi("Total llamadas", f"{len(df):,}")
+    with kpi_cols[1]:
+        _kpi("Duración promedio", format_seconds(df["Duración"].mean()))
+    with kpi_cols[2]:
+        _kpi("Espera promedio", format_seconds(df["Tiempo Espera"].mean()))
+
+    if "Estado" in df.columns:
+        estado_map = {
+            "success": "Atendido",
+            "resolved": "Atendido",
+            "resuelto": "Atendido",
+            "abandonado": "Abandonado",
+            "abandoned": "Abandonado",
+            "activa": "En curso",
+            "en curso": "En curso",
+            "active": "En curso",
+        }
+        estado_norm = df["Estado"].astype(str).str.strip().str.lower()
+        estado_display = estado_norm.map(estado_map).fillna(df["Estado"])
+        estado_counts = estado_display.value_counts().reset_index()
+        estado_counts.columns = ["Estado", "Total"]
+        estado_colors = {"Atendido": "#2e7d32", "En curso": "#fbc02d", "Abandonado": "#d32f2f"}
+        estado_order = ["Atendido", "En curso", "Abandonado"]
+        fig = px.bar(
+            estado_counts,
+            x="Estado",
+            y="Total",
+            text="Total",
+            color="Estado",
+            color_discrete_map=estado_colors,
+            category_orders={"Estado": estado_order},
+        )
+        fig.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    if "Agente" in df.columns:
+        grouped = (
+            df.groupby("Agente")
+            .agg(
+                Total=("Agente", "size"),
+                Duracion_Prom=("Duración", "mean"),
+                Espera_Prom=("Tiempo Espera", "mean"),
+            )
+            .reset_index()
+        )
+        grouped["Duracion_Prom"] = grouped["Duracion_Prom"].apply(format_seconds)
+        grouped["Espera_Prom"] = grouped["Espera_Prom"].apply(format_seconds)
+        grouped = grouped.rename(
+            columns={
+                "Agente": "Agente",
+                "Total": "Total de Llamadas",
+                "Duracion_Prom": "Duracion Promedio",
+                "Espera_Prom": "Tiempo de espera Promedio",
+            }
+        )
+        st.dataframe(prepare_table(grouped), use_container_width=True)
+
+
 def render() -> None:
     st.header("Llamadas")
 
-    reporte_df = _load_csv(REPORTE_PATH)
-    detalle_df = _load_csv(DETALLE_PATH)
+    if "llamadas_source" not in st.session_state:
+        st.session_state["llamadas_source"] = "Providers"
+
+    source_cols = st.columns(2, gap="small")
+    with source_cols[0]:
+        if st.button("Providers", use_container_width=True):
+            st.session_state["llamadas_source"] = "Providers"
+    with source_cols[1]:
+        if st.button("CCC", use_container_width=True):
+            st.session_state["llamadas_source"] = "CCC"
+
+    source = st.session_state["llamadas_source"]
+    if source == "CCC":
+        reporte_path = REPORTE_CCC_PATH
+        detalle_path = DETALLE_CCC_PATH
+        reporte_name = "reporte_ccc.csv"
+        detalle_name = "detalle_llamadas_ccc.csv"
+    else:
+        reporte_path = REPORTE_PATH
+        detalle_path = DETALLE_PATH
+        reporte_name = "reporte.csv"
+        detalle_name = "detalle_llamadas.csv"
+
+    reporte_df = _load_csv(reporte_path)
+    detalle_df = _load_csv(detalle_path)
 
     st.markdown("---")
 
@@ -288,9 +502,15 @@ def render() -> None:
         st.session_state["llamadas_range"] = (range_start, range_end)
     else:
         range_start, range_end = st.session_state["llamadas_range"]
-    detalle_filtrado = _filter_range(detalle_df, "Fecha", range_start, range_end)
-    reporte_filtrado = _filter_range(reporte_df, "Fecha", range_start, range_end)
-
-    _render_satisfaccion(reporte_filtrado)
-    st.markdown("---")
-    _render_detalle(detalle_filtrado)
+    if source == "CCC":
+        detalle_filtrado = _filter_range(detalle_df, "Hora Inicio", range_start, range_end)
+        reporte_filtrado = _filter_range(reporte_df, "Fecha", range_start, range_end)
+        _render_ccc_reporte(reporte_filtrado, reporte_name)
+        st.markdown("---")
+        _render_ccc_detalle(detalle_filtrado, detalle_name)
+    else:
+        detalle_filtrado = _filter_range(detalle_df, "Fecha", range_start, range_end)
+        reporte_filtrado = _filter_range(reporte_df, "Fecha", range_start, range_end)
+        _render_satisfaccion(reporte_filtrado, reporte_name)
+        st.markdown("---")
+        _render_detalle(detalle_filtrado, detalle_name)
