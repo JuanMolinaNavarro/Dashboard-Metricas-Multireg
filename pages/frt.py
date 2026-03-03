@@ -9,6 +9,12 @@ from helpers import api_client
 from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, prepare_table, quick_range, render_description
 
 
+def _exclude_null_agents(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or "agent_email" not in df.columns:
+        return df
+    return df[df["agent_email"].notna()]
+
+
 def _init_state(key: str):
     if key not in st.session_state:
         st.session_state[key] = quick_range(7)
@@ -82,6 +88,7 @@ def render():
 
     rows = frt_data.get("data", frt_data) if isinstance(frt_data, dict) else frt_data
     df = pd.DataFrame(rows)
+    df = _exclude_null_agents(df)
     if not df.empty:
         team_names = (
             [n for n in sorted(df["team_name"].dropna().unique().tolist()) if n != "CHATBOT"]
@@ -269,6 +276,7 @@ def render():
     )
     rank_rows = ranking.get("data", ranking) if isinstance(ranking, dict) else ranking
     rank_df = pd.DataFrame(rank_rows)
+    rank_df = _exclude_null_agents(rank_df)
     rank_df = exclude_agent_rows(rank_df, "olartefacundo@outlook.com")
     if "agent_email" in rank_df.columns:
         rank_df = rank_df[rank_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
@@ -279,6 +287,7 @@ def render():
         else resumen_agentes
     )
     resumen_df = pd.DataFrame(resumen_rows)
+    resumen_df = _exclude_null_agents(resumen_df)
     if "agent_email" in resumen_df.columns:
         resumen_df = resumen_df[resumen_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
 
@@ -358,6 +367,7 @@ def render():
     )
     sla_rows = sla.get("data", sla) if isinstance(sla, dict) else sla
     df_sla = pd.DataFrame(sla_rows)
+    df_sla = _exclude_null_agents(df_sla)
     df_sla = exclude_agent_rows(df_sla, "olartefacundo@outlook.com")
     def _style_sla(df: pd.DataFrame):
         if "% SLA" not in df.columns:
@@ -492,6 +502,7 @@ def render():
     )
     agents_rows = resumen_agentes.get("data", resumen_agentes) if isinstance(resumen_agentes, dict) else resumen_agentes
     df_agents = pd.DataFrame(agents_rows)
+    df_agents = _exclude_null_agents(df_agents)
     df_agents = exclude_agent_rows(df_agents, "olartefacundo@outlook.com")
     if not df_agents.empty:
         if "team_uuid" in df_agents.columns:
