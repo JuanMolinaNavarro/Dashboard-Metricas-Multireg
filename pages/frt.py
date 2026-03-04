@@ -72,6 +72,7 @@ def render():
 
     team_uuid = ""
     agent_email = ""
+    ranking_max_seconds = int(st.session_state.get("frt_max_seconds", DEFAULT_MAX_SECONDS))
 
     if mode == "24h":
         frt_data = api_client.frt_ultimas_24h(team_uuid, agent_email)
@@ -82,7 +83,13 @@ def render():
     else:
         frt_data = api_client.frt_tiempo_primera_respuesta(start, end, team_uuid, agent_email)
 
-    ranking = api_client.frt_ranking_agentes(start, end, limit=100, team_uuid=team_uuid)
+    ranking = api_client.frt_ranking_agentes_compuesto(
+        start,
+        end,
+        max_seconds=ranking_max_seconds,
+        limit=100,
+        team_uuid=team_uuid,
+    )
     resumen_agentes = api_client.frt_resumen_agentes(start, end)
     resumen_equipos = api_client.frt_resumen_equipos(start, end)
 
@@ -272,7 +279,7 @@ def render():
 
     st.markdown("#### Ranking de agentes")
     render_description(
-        "Agentes rankeados por desempeño en base al tiempo de primera respuesta promedio."
+        "Ranking compuesto por agente basado en SLA, porcentaje de resueltos y abandonos invertidos."
     )
     rank_rows = ranking.get("data", ranking) if isinstance(ranking, dict) else ranking
     rank_df = pd.DataFrame(rank_rows)
@@ -292,65 +299,67 @@ def render():
         resumen_df = resumen_df[resumen_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
 
     if not rank_df.empty:
-        if "agent_email" in resumen_df.columns:
-            rank_df = rank_df.merge(
-                resumen_df[["agent_email", "casos_abiertos"]],
-                on="agent_email",
-                how="left",
-            )
-        rank_df = rank_df.reset_index(drop=True)
+        rank_df = rank_df.sort_values(["score_final", "agent_email"], ascending=[False, True]).reset_index(drop=True)
         rank_df.insert(0, "N", rank_df.index + 1)
-        if "team_uuid" in rank_df.columns:
-            rank_df = rank_df.drop(columns=["team_uuid"])
 
         numeric_rank = rank_df.copy()
-        avg_series = numeric_rank["avg_frt_seconds"] if "avg_frt_seconds" in numeric_rank.columns else None
-        nonzero_avg = avg_series[avg_series > 0] if avg_series is not None else None
-        min_avg = float(nonzero_avg.min()) if nonzero_avg is not None and not nonzero_avg.empty else None
-        max_avg = float(nonzero_avg.max()) if nonzero_avg is not None and not nonzero_avg.empty else None
-
-        for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
-            if col in rank_df.columns:
-                rank_df[col] = rank_df[col].apply(format_seconds)
+        score_series = numeric_rank["score_final"] if "score_final" in numeric_rank.columns else None
+        min_score = float(score_series.min()) if score_series is not None and not score_series.empty else None
+        max_score = float(score_series.max()) if score_series is not None and not score_series.empty else None
 
         rank_df = rank_df.rename(
             columns={
                 "agent_email": "Agente",
-                "casos_abiertos": "Casos Recibidos",
-                "casos_respondidos": "Casos Respondidos",
-                "avg_frt_seconds": "Tiempo de primera respuesta Promedio (s)",
-                "median_frt_seconds": "Tiempo de primera respuesta Mediana (s)",
-                "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
+                "casos_respondidos": "Casos Respondidos (SLA)",
+                "casos_en_sla": "Casos en SLA",
+                "pct_sla": "% SLA",
+                "casos_abiertos_resueltos": "Casos Recibidos (Resolucion)",
+                "casos_resueltos": "Casos Resueltos",
+                "pct_resueltos": "% Resueltos",
+                "casos_abiertos_abandonados": "Casos Recibidos (Abandonos)",
+                "casos_abandonados_24h": "Casos Abandonados (+24h)",
+                "pct_abandonados_24h": "% Abandonados",
+                "score_abandonos_invertido": "Score Invertido Abandonos",
+                "puntos_cumplimiento_atencion": "Puntos Cumplimiento (35%)",
+                "puntos_resolucion_efectiva": "Puntos Resolucion (25%)",
+                "puntos_abandonos": "Puntos Abandonos (20%)",
+                "score_final": "Score Final (0-80)",
             }
         )
-        if "Casos Recibidos" in rank_df.columns:
-            cols = rank_df.columns.tolist()
-            if "Agente" in cols and "Casos Respondidos" in cols:
-                cols.remove("Casos Recibidos")
-                insert_at = cols.index("Casos Respondidos")
-                cols.insert(insert_at, "Casos Recibidos")
-                rank_df = rank_df[cols]
         rank_df = prepare_table(rank_df)
 
         def _style_rank_row(row):
-            if min_avg is None or max_avg is None:
+            if min_score is None or max_score is None:
                 return [""] * len(row)
             idx = row.name - 1
             try:
-                value = float(numeric_rank.loc[idx, "avg_frt_seconds"])
+                value = float(numeric_rank.loc[idx, "score_final"])
             except Exception:
                 return [""] * len(row)
-            if value == min_avg:
+            if value == max_score:
                 return ["color: #16a34a; font-weight: 700;"] * len(row)
-            if value == max_avg:
+            if value == min_score:
                 return ["color: #dc2626; font-weight: 700;"] * len(row)
             return [""] * len(row)
 
         styler = rank_df.style.apply(_style_rank_row, axis=1)
+        format_map = {
+            "% SLA": "{:.2f}",
+            "% Resueltos": "{:.2f}",
+            "% Abandonados": "{:.2f}",
+            "Score Invertido Abandonos": "{:.2f}",
+            "Puntos Cumplimiento (35%)": "{:.2f}",
+            "Puntos Resolucion (25%)": "{:.2f}",
+            "Puntos Abandonos (20%)": "{:.2f}",
+            "Score Final (0-80)": "{:.2f}",
+        }
+        existing_format_map = {k: v for k, v in format_map.items() if k in rank_df.columns}
+        if existing_format_map:
+            styler = styler.format(existing_format_map)
         st.dataframe(styler, use_container_width=True)
         st.caption(
-            "Verde: mejor rankeado. "
-            "Rojo: peor rankeado."
+            "Score Final = (% SLA x 0.35) + (% Resueltos x 0.25) + "
+            "((100 - % Abandonados) x 0.20). Verde: mejor score. Rojo: peor score."
         )
     else:
         st.info("Sin datos de ranking disponibles.")
