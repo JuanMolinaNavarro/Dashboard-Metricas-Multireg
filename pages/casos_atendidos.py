@@ -108,9 +108,9 @@ def render():
         )
         donut_cols = st.columns(2, gap="large")
         with donut_cols[0]:
-            st.markdown("#### Porcentaje de Conversaciones Atendidas en el mismo día")
+            st.markdown("#### Porcentaje de Casos Atendidos en el mismo día")
             render_description(
-                "Porcentaje de conversaciones entrantes que fueron atendidas en el mismo día en el que ingresaron. (Verde mayor o igual a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
+                "Porcentaje de casos recibidos que fueron atendidos en el mismo día en el que ingresaron. (Verde mayor o igual a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
             )
             fig = px.pie(donut_df, names="segmento", values="valor", hole=0.6)
             fig.update_traces(
@@ -151,7 +151,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Conversaciones entrantes</div>
+  <div style="font-size: 14px; opacity: 0.8;">Casos recibidos</div>
   <div style="font-size: 32px; font-weight: 700;">{int(entradas)}</div>
 </div>
 """,
@@ -171,7 +171,7 @@ def render():
             st.markdown(
                 f"""
 <div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Atendidas mismo dia</div>
+  <div style="font-size: 14px; opacity: 0.8;">Atendidos mismo dia</div>
   <div style="font-size: 32px; font-weight: 700;">{int(atendidas)}</div>
 </div>
 """,
@@ -198,8 +198,8 @@ def render():
             columns={
                 "dia": "Dia",
                 "agent_email": "Agente",
-                "conversaciones_entrantes": "Conversaciones Entrantes",
-                "conversaciones_atendidas_same_day": "Conversaciones Atendidas (Mismo Dia)",
+                "conversaciones_entrantes": "Casos Recibidos",
+                "conversaciones_atendidas_same_day": "Casos Atendidos (Mismo Dia)",
                 "pct_atendidas": "% Atendidas",
             }
         )
@@ -222,8 +222,8 @@ def render():
 
         def _aggregate(df_in: pd.DataFrame, key: str) -> pd.DataFrame:
             grouped = df_in.groupby(key, dropna=False, as_index=False).agg(
-                conversaciones_entrantes=("Conversaciones Entrantes", "sum"),
-                conversaciones_atendidas=("Conversaciones Atendidas (Mismo Dia)", "sum"),
+                conversaciones_entrantes=("Casos Recibidos", "sum"),
+                conversaciones_atendidas=("Casos Atendidos (Mismo Dia)", "sum"),
             )
             grouped["% Atendidas"] = grouped.apply(
                 lambda row: (row["conversaciones_atendidas"] / row["conversaciones_entrantes"] * 100)
@@ -497,7 +497,7 @@ def render():
 
         st.markdown("#### Detalle por dia")
         render_description(
-            "Cantidad de conversaciones entrantes comparada con la cantidad de conversaciones atendidas en ese mismo día, junto con su porcentaje correspondiente."
+            "Cantidad de casos recibidos comparada con la cantidad de casos atendidos en ese mismo día, junto con su porcentaje correspondiente."
         )
         st.markdown(
             "Objetivo: Porcentaje de casos atendidos en el mismo dia sea mayor al 90% (verde), luego si esta entre 80% y 90% (amarillo), menor a 80% (rojo)."
