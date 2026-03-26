@@ -1,22 +1,214 @@
 ﻿from __future__ import annotations
 
-from datetime import date
-
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import streamlit_shadcn_ui as ui
 
 from config import DEFAULT_MAX_SECONDS
-from helpers import api_client, charts
-from helpers.utils import date_range_picker, format_seconds, prepare_table, quick_range, render_description
+from helpers import api_client
+from helpers.agent_mapping import normalize_agent_key, with_agent_display_names
+from helpers.calls_ranking import load_attended_calls_by_agent
+from helpers.utils import date_range_picker, prepare_table, quick_range, render_description
 
 
-def _init_state(key: str):
+def _init_state(key: str) -> None:
     if key not in st.session_state:
         st.session_state[key] = quick_range(7)
     if "casos_atendidos_mode" not in st.session_state:
         st.session_state["casos_atendidos_mode"] = "custom"
+
+
+def _extract_rows(payload) -> list[dict]:
+    if isinstance(payload, dict):
+        data = payload.get("data", [])
+        return data if isinstance(data, list) else []
+    return payload if isinstance(payload, list) else []
+
+
+def _aggregate_casos(df_r: pd.DataFrame, df_a: pd.DataFrame, key: str) -> pd.DataFrame:
+    res_group = (
+        df_r.groupby(key, dropna=False, as_index=False).agg(
+            casos_abiertos_res=("casos_abiertos", "sum"),
+            casos_resueltos=("casos_resueltos", "sum"),
+        )
+        if not df_r.empty
+        else pd.DataFrame(columns=[key, "casos_abiertos_res", "casos_resueltos"])
+    )
+    ab_group = (
+        df_a.groupby(key, dropna=False, as_index=False).agg(
+            casos_abiertos_ab=("casos_abiertos", "sum"),
+            casos_abandonados=("casos_abandonados_24h", "sum"),
+        )
+        if not df_a.empty
+        else pd.DataFrame(columns=[key, "casos_abiertos_ab", "casos_abandonados"])
+    )
+
+    merged = pd.merge(res_group, ab_group, on=key, how="outer")
+    merged["casos_abiertos"] = merged[["casos_abiertos_res", "casos_abiertos_ab"]].max(axis=1)
+    merged["casos_abiertos"] = merged["casos_abiertos"].fillna(0)
+    merged["casos_resueltos"] = merged["casos_resueltos"].fillna(0)
+    merged["casos_abandonados"] = merged["casos_abandonados"].fillna(0)
+    merged["pct_resueltos"] = merged.apply(
+        lambda row: (row["casos_resueltos"] / row["casos_abiertos"] * 100)
+        if row["casos_abiertos"]
+        else 0,
+        axis=1,
+    )
+    merged["pct_abandonados"] = merged.apply(
+        lambda row: (row["casos_abandonados"] / row["casos_abiertos"] * 100)
+        if row["casos_abiertos"]
+        else 0,
+        axis=1,
+    )
+    return merged[
+        [key, "casos_abiertos", "casos_resueltos", "pct_resueltos", "casos_abandonados", "pct_abandonados"]
+    ]
+
+
+def _render_kpi_card(label: str, value: int) -> None:
+    st.markdown(
+        f"""
+<div class="kpi-card">
+  <div style="font-size: 14px; opacity: 0.8;">{label}</div>
+  <div style="font-size: 32px; font-weight: 700;">{value}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _style_atendidas(df_styled: pd.DataFrame):
+    if "% Atendidas" not in df_styled.columns:
+        return df_styled
+
+    def _color(value):
+        try:
+            pct = float(value)
+        except (TypeError, ValueError):
+            return ""
+        if pct < 80:
+            return "color: #dc2626; font-weight: 600;"
+        if pct < 90:
+            return "color: #f59e0b; font-weight: 600;"
+        return "color: #16a34a; font-weight: 600;"
+
+    styler = df_styled.style.applymap(_color, subset=["% Atendidas"])
+    return styler.format({"% Atendidas": "{:.2f}"})
+
+
+def _style_ranking(df_numeric: pd.DataFrame):
+    df_display = prepare_table(df_numeric)
+    styler = df_display.style
+
+    score_cols = [
+        "Casos Resueltos (WhatsApp)",
+        "Llamadas Atendidas",
+        "% Casos en SLA",
+        "% Casos Resueltos",
+        "% Casos Abandonados",
+        "Score",
+    ]
+
+    for column in score_cols:
+        if column not in df_numeric.columns:
+            continue
+
+        series = pd.to_numeric(df_numeric[column], errors="coerce").dropna()
+        if series.empty:
+            continue
+
+        if column == "% Casos Abandonados":
+            best_value = float(series.min())
+            worst_value = float(series.max())
+        else:
+            best_value = float(series.max())
+            worst_value = float(series.min())
+
+        if best_value == worst_value:
+            continue
+
+        def _color_value(value, best=best_value, worst=worst_value):
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return ""
+            if numeric == best:
+                return "color: #16a34a; font-weight: 700;"
+            if numeric == worst:
+                return "color: #dc2626; font-weight: 700;"
+            return ""
+
+        styler = styler.applymap(_color_value, subset=[column])
+
+    if "Score" in df_display.columns:
+        styler = styler.set_properties(subset=["Score"], **{"background-color": "#0072a0"})
+
+    styler = styler.format(
+        {
+            "% Casos en SLA": "{:.2f}",
+            "% Casos Resueltos": "{:.2f}",
+            "% Casos Abandonados": "{:.2f}",
+            "Score": "{:.2f}",
+        }
+    )
+    return styler
+
+
+def _build_ranking_df(start, end) -> pd.DataFrame:
+    ranking = api_client.frt_ranking_agentes_compuesto(
+        start,
+        end,
+        max_seconds=DEFAULT_MAX_SECONDS,
+        limit=100,
+        team_uuid="",
+    )
+    rank_df = pd.DataFrame(_extract_rows(ranking))
+    if rank_df.empty or "agent_email" not in rank_df.columns:
+        return pd.DataFrame()
+
+    rank_df = rank_df[rank_df["agent_email"].notna()].copy()
+    if rank_df.empty:
+        return pd.DataFrame()
+
+    rank_df = with_agent_display_names(rank_df, email_col="agent_email", display_col="agent_name")
+    calls_by_agent = load_attended_calls_by_agent(start, end)
+    rank_df["Llamadas Atendidas"] = (
+        rank_df["agent_name"]
+        .apply(lambda name: int(calls_by_agent.get(normalize_agent_key(name), 0)))
+        .astype(int)
+    )
+
+    rank_df["Casos Resueltos (WhatsApp)"] = (
+        pd.to_numeric(rank_df.get("casos_resueltos"), errors="coerce")
+        .fillna(0)
+        .clip(lower=0)
+        .astype(int)
+    )
+    rank_df["% Casos en SLA"] = pd.to_numeric(rank_df.get("pct_sla"), errors="coerce").fillna(0.0)
+    rank_df["% Casos Resueltos"] = pd.to_numeric(rank_df.get("pct_resueltos"), errors="coerce").fillna(0.0)
+    rank_df["% Casos Abandonados"] = (
+        pd.to_numeric(rank_df.get("pct_abandonados_24h"), errors="coerce").fillna(0.0)
+    )
+
+    score_base = pd.to_numeric(rank_df.get("score_final"), errors="coerce").fillna(0.0)
+    puntos_resueltos = (rank_df["Casos Resueltos (WhatsApp)"] // 5).astype(int)
+    puntos_llamadas = (rank_df["Llamadas Atendidas"] // 2).astype(int)
+    rank_df["Score"] = (score_base + puntos_resueltos + puntos_llamadas).round(2)
+
+    rank_df["Agente"] = rank_df["agent_name"].fillna(rank_df["agent_email"]).astype(str)
+    rank_df = rank_df[
+        [
+            "Agente",
+            "Casos Resueltos (WhatsApp)",
+            "Llamadas Atendidas",
+            "% Casos en SLA",
+            "% Casos Resueltos",
+            "% Casos Abandonados",
+            "Score",
+        ]
+    ]
+    rank_df = rank_df.sort_values(["Score", "Agente"], ascending=[False, True]).reset_index(drop=True)
+    return rank_df
 
 
 def render():
@@ -44,10 +236,9 @@ def render():
             key="casos_atendidos_range_choice",
         )
     with range_cols[1]:
-        refresh = st.button("Actualizar", key="ca_refresh", use_container_width=True)
-    if refresh:
-        st.cache_data.clear()
-        st.rerun()
+        if st.button("Actualizar", key="ca_refresh", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
     st.session_state["casos_atendidos_mode"] = label_to_mode.get(selected_label, "custom")
 
     mode = st.session_state["casos_atendidos_mode"]
@@ -68,7 +259,6 @@ def render():
     start, end = st.session_state["casos_atendidos_range"]
     st.markdown(f"### Rango seleccionado: {start} a {end}")
 
-    mode = st.session_state["casos_atendidos_mode"]
     if mode == "24h":
         data = api_client.casos_atendidos_ultimas_24h()
         casos_resueltos = api_client.casos_resueltos_ultimas_24h("", "")
@@ -85,16 +275,14 @@ def render():
         data = api_client.metrics_casos_atendidos(start, end)
         casos_resueltos = api_client.casos_resueltos(start, end, "", "")
         casos_abandonados = api_client.casos_abandonados_24h(start, end, "", "", "")
+
     resumen = api_client.metrics_casos_atendidos_resumen(start, end)
     pendientes = api_client.casos_pendientes(start, end, "", "")
 
     if isinstance(resumen, dict):
         entradas = float(resumen.get("conversaciones_entrantes", 0))
         atendidas = float(resumen.get("conversaciones_atendidas_same_day", 0))
-        if "pct_atendidas" in resumen:
-            pct_val = float(resumen["pct_atendidas"])
-        else:
-            pct_val = (atendidas / entradas * 100) if entradas else 0.0
+        pct_val = float(resumen.get("pct_atendidas", (atendidas / entradas * 100) if entradas else 0.0))
 
         if pct_val > 75:
             color = "#16a34a"
@@ -138,378 +326,100 @@ def render():
                 "Porciones del total de mensajes que recibe cada unidad. CCC es atendido por 8 agentes, mientras que el resto de unidades es atendido por 7 agentes."
             )
 
-        pend_rows = pendientes.get("data", pendientes) if isinstance(pendientes, dict) else pendientes
-        df_pend = pd.DataFrame(pend_rows)
-        casos_pendientes = (
-            float(df_pend["casos_pendientes"].sum())
-            if not df_pend.empty and "casos_pendientes" in df_pend.columns
-            else 0
-        )
-
-        kpi_cols = st.columns(3)
-        with kpi_cols[0]:
-            st.markdown(
-                f"""
-<div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Casos recibidos</div>
-  <div style="font-size: 32px; font-weight: 700;">{int(entradas)}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        with kpi_cols[1]:
-            st.markdown(
-                f"""
-<div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Casos Pendientes</div>
-  <div style="font-size: 32px; font-weight: 700;">{int(casos_pendientes)}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        with kpi_cols[2]:
-            st.markdown(
-                f"""
-<div class="kpi-card">
-  <div style="font-size: 14px; opacity: 0.8;">Atendidos mismo dia</div>
-  <div style="font-size: 32px; font-weight: 700;">{int(atendidas)}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("Resumen no disponible para el rango seleccionado.")
-
-    st.subheader("Detalle")
-    rows = data.get("data", data) if isinstance(data, dict) else data
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        if "entradas" not in locals():
-            entradas = float(df.get("conversaciones_entrantes", pd.Series(dtype=float)).sum())
-            atendidas = float(df.get("conversaciones_atendidas_same_day", pd.Series(dtype=float)).sum())
-            pct_val = (atendidas / entradas * 100) if entradas else 0.0
-        if "team_uuid" in df.columns:
-            df = df.drop(columns=["team_uuid"])
-        if "team_name" in df.columns:
-            df = df[df["team_name"] != "CHATBOT"]
-        if "pct_atendidas" in df.columns:
-            df["pct_atendidas"] = df["pct_atendidas"].round(2)
-        df = df.rename(
-            columns={
-                "dia": "Dia",
-                "agent_email": "Agente",
-                "conversaciones_entrantes": "Casos Recibidos",
-                "conversaciones_atendidas_same_day": "Casos Atendidos (Mismo Dia)",
-                "pct_atendidas": "% Atendidas",
-            }
-        )
-        def _style_atendidas(df_styled: pd.DataFrame):
-            if "% Atendidas" not in df_styled.columns:
-                return df_styled
-            def _color(val):
-                try:
-                    value = float(val)
-                except (TypeError, ValueError):
-                    return ""
-                if value < 80:
-                    return "color: #dc2626; font-weight: 600;"
-                if value < 90:
-                    return "color: #f59e0b; font-weight: 600;"
-                return "color: #16a34a; font-weight: 600;"
-            styler = df_styled.style.applymap(_color, subset=["% Atendidas"])
-            styler = styler.format({"% Atendidas": "{:.2f}"})
-            return styler
-
-        def _aggregate(df_in: pd.DataFrame, key: str) -> pd.DataFrame:
-            grouped = df_in.groupby(key, dropna=False, as_index=False).agg(
-                conversaciones_entrantes=("Casos Recibidos", "sum"),
-                conversaciones_atendidas=("Casos Atendidos (Mismo Dia)", "sum"),
-            )
-            grouped["% Atendidas"] = grouped.apply(
-                lambda row: (row["conversaciones_atendidas"] / row["conversaciones_entrantes"] * 100)
-                if row["conversaciones_entrantes"]
-                else 0,
-                axis=1,
-            )
-            return grouped
-
-        # Tablas usando los endpoints de "Casos"
-        res_rows = casos_resueltos.get("data", casos_resueltos) if isinstance(casos_resueltos, dict) else casos_resueltos
-        ab_rows = casos_abandonados.get("data", casos_abandonados) if isinstance(casos_abandonados, dict) else casos_abandonados
-        df_res = pd.DataFrame(res_rows)
-        df_ab = pd.DataFrame(ab_rows)
-        if "team_uuid" in df_res.columns:
-            df_res = df_res.drop(columns=["team_uuid"])
-        if "team_uuid" in df_ab.columns:
-            df_ab = df_ab.drop(columns=["team_uuid"])
-
-        def _aggregate_casos(df_r: pd.DataFrame, df_a: pd.DataFrame, key: str) -> pd.DataFrame:
-            res_group = df_r.groupby(key, dropna=False, as_index=False).agg(
-                casos_abiertos_res=("casos_abiertos", "sum"),
-                casos_resueltos=("casos_resueltos", "sum"),
-            ) if not df_r.empty else pd.DataFrame(columns=[key, "casos_abiertos_res", "casos_resueltos"])
-            ab_group = df_a.groupby(key, dropna=False, as_index=False).agg(
-                casos_abiertos_ab=("casos_abiertos", "sum"),
-                casos_abandonados=("casos_abandonados_24h", "sum"),
-            ) if not df_a.empty else pd.DataFrame(columns=[key, "casos_abiertos_ab", "casos_abandonados"])
-
-            merged = pd.merge(res_group, ab_group, on=key, how="outer")
-            merged["casos_abiertos"] = merged[["casos_abiertos_res", "casos_abiertos_ab"]].max(axis=1)
-            merged["casos_abiertos"] = merged["casos_abiertos"].fillna(0)
-            merged["casos_resueltos"] = merged["casos_resueltos"].fillna(0)
-            merged["casos_abandonados"] = merged["casos_abandonados"].fillna(0)
-
-            merged["pct_resueltos"] = merged.apply(
-                lambda row: (row["casos_resueltos"] / row["casos_abiertos"] * 100)
-                if row["casos_abiertos"]
-                else 0,
-                axis=1,
-            )
-            merged["pct_abandonados"] = merged.apply(
-                lambda row: (row["casos_abandonados"] / row["casos_abiertos"] * 100)
-                if row["casos_abiertos"]
-                else 0,
-                axis=1,
-            )
-            return merged[[key, "casos_abiertos", "casos_resueltos", "pct_resueltos", "casos_abandonados", "pct_abandonados"]]
-
+        df_res = pd.DataFrame(_extract_rows(casos_resueltos))
+        df_ab = pd.DataFrame(_extract_rows(casos_abandonados))
         team_key = "team_name" if "team_name" in df_res.columns or "team_name" in df_ab.columns else "team_uuid"
-        if team_key not in df_res.columns and team_key in df_ab.columns:
-            df_res[team_key] = df_ab[team_key]
-        if team_key not in df_ab.columns and team_key in df_res.columns:
-            df_ab[team_key] = df_res[team_key]
-
-        def _style_resueltos(df_styled: pd.DataFrame):
-            if "% Resueltos" not in df_styled.columns:
-                return df_styled
-            def _color(val):
-                try:
-                    value = float(val)
-                except (TypeError, ValueError):
-                    return ""
-                if value < 75:
-                    return "color: #dc2626; font-weight: 600;"
-                if value < 85:
-                    return "color: #f59e0b; font-weight: 600;"
-                return "color: #16a34a; font-weight: 600;"
-            styler = df_styled.style.applymap(_color, subset=["% Resueltos"])
-            styler = styler.format({"% Resueltos": "{:.2f}"})
-            return styler
-
         if team_key in df_res.columns or team_key in df_ab.columns:
+            if team_key not in df_res.columns:
+                df_res[team_key] = None
+            if team_key not in df_ab.columns:
+                df_ab[team_key] = None
             if "team_name" in df_res.columns:
                 df_res = df_res[df_res["team_name"] != "CHATBOT"]
             if "team_name" in df_ab.columns:
                 df_ab = df_ab[df_ab["team_name"] != "CHATBOT"]
-            empresa_table = _aggregate_casos(df_res, df_ab, team_key).rename(
-                columns={team_key: "Empresa"}
-            )
+
+            empresa_table = _aggregate_casos(df_res, df_ab, team_key).rename(columns={team_key: "Empresa"})
             empresa_table = empresa_table[empresa_table["Empresa"] != "CHATBOT"]
-            empresa_table = empresa_table.rename(
-                columns={
-                    "casos_abiertos": "Casos Recibidos",
-                    "casos_resueltos": "Casos Resueltos",
-                    "pct_resueltos": "% Resueltos",
-                }
-            )
-            empresa_table = empresa_table[["Empresa", "Casos Recibidos", "Casos Resueltos", "% Resueltos"]]
-            if "Casos Recibidos" in empresa_table.columns:
-                empresa_table["Casos Recibidos"] = (
-                    empresa_table["Casos Recibidos"].fillna(0).astype(int)
-                )
-            pie_df = empresa_table.copy()
+            empresa_table = empresa_table.rename(columns={"casos_abiertos": "Casos Recibidos"})
+            pie_df = empresa_table[["Empresa", "Casos Recibidos"]].copy()
+            pie_df["Casos Recibidos"] = pd.to_numeric(pie_df["Casos Recibidos"], errors="coerce").fillna(0)
             pie_df = pie_df[pie_df["Casos Recibidos"] > 0]
-            if not pie_df.empty:
-                fig_empresas = px.pie(
-                    pie_df,
-                    names="Empresa",
-                    values="Casos Recibidos",
-                )
-                fig_empresas.update_traces(
-                    textinfo="percent+label",
-                    hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
-                )
-                fig_empresas.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                with donut_cols[1]:
-                    st.plotly_chart(fig_empresas, use_container_width=True)
-            st.markdown("#### Resumen por unidad: Resoluciones")
-            render_description(
-                "Cantidad de casos recibidos y resueltos mostrando su porcentaje de resolución, en el rango de tiempo establecido por Unidad."
-            )
-            st.dataframe(_style_resueltos(prepare_table(empresa_table)), use_container_width=True)
-            st.caption("% Resueltos: Verde mayor o igual a 85%, Amarillo entre 75% y 85%, Rojo menor al 75%.")
-        else:
-            st.info("No hay datos por empresa para este endpoint.")
-
-        if "agent_email" in df_res.columns or "agent_email" in df_ab.columns:
-            agente_table = _aggregate_casos(df_res, df_ab, "agent_email").rename(
-                columns={"agent_email": "Agente"}
-            )
-            agente_table = agente_table.rename(
-                columns={
-                    "casos_abiertos": "Casos Recibidos",
-                    "casos_resueltos": "Casos Resueltos",
-                    "pct_resueltos": "% Resueltos",
-                }
-            )
-            agente_table = agente_table[["Agente", "Casos Recibidos", "Casos Resueltos", "% Resueltos"]]
-            if "Casos Recibidos" in agente_table.columns:
-                agente_table["Casos Recibidos"] = (
-                    agente_table["Casos Recibidos"].fillna(0).astype(int)
-                )
-            st.markdown("#### Resumen por agente: Resoluciones")
-            render_description(
-                "Cantidad de casos recibidos y resueltos mostrando su porcentaje de resolución, en el rango de tiempo establecido por cada Agente."
-            )
-            st.dataframe(_style_resueltos(prepare_table(agente_table)), use_container_width=True)
-            st.caption("% Resueltos: Verde mayor o igual a 85%, Amarillo entre 75% y 85%, Rojo menor al 75%.")
-        else:
-            st.info("No hay datos por agente para este endpoint.")
-
-        def _style_sla(df_styled: pd.DataFrame):
-            if "% SLA" not in df_styled.columns:
-                return df_styled
-            series = pd.to_numeric(df_styled["% SLA"], errors="coerce")
-            nonzero = series[series > 0]
-            min_sla = float(nonzero.min()) if not nonzero.empty else None
-            max_sla = float(nonzero.max()) if not nonzero.empty else None
-
-            def _color_row(row):
-                try:
-                    value = float(row["% SLA"])
-                except (TypeError, ValueError, KeyError):
-                    return [""] * len(row)
-                if max_sla is not None and value == max_sla and value > 0:
-                    return ["color: #16a34a; font-weight: 700;"] * len(row)
-                if min_sla is not None and value == min_sla and value > 0:
-                    return ["color: #dc2626; font-weight: 700;"] * len(row)
-                return [""] * len(row)
-
-            styler = df_styled.style.apply(_color_row, axis=1)
-            styler = styler.format({"% SLA": "{:.2f}"})
-            return styler
-
-        st.markdown("#### SLA por unidad")
-        render_description(
-            "Service Level Agreement, basado en la cantidad de tiempo que se demora en contestar un caso, se muestra los casos recibidos por empresa, la cantidad que se respondieron y la cantidad que se encuentra dentro del rango del SLA, incluido su porcentaje. El valor de tiempo maximo de SLA se puede modificar (valor por defecto 300 segundos)."
-        )
-        max_seconds = st.text_input(
-            "Cantidad de segundos maximos de SLA",
-            value=str(DEFAULT_MAX_SECONDS),
-            key="casos_atendidos_sla_max_seconds",
-        )
-        sla = api_client.frt_sla(start, end, int(max_seconds), "", "")
-        sla_rows = sla.get("data", sla) if isinstance(sla, dict) else sla
-        df_sla = pd.DataFrame(sla_rows)
-        if "team_name" in df_sla.columns:
-            df_sla = df_sla[df_sla["team_name"] != "CHATBOT"]
-
-        if not df_sla.empty:
-            team_key = "team_name" if "team_name" in df_sla.columns else "team_uuid"
-            if team_key in df_sla.columns:
-                sla_team = df_sla.groupby(team_key, as_index=False).agg(
-                    casos_respondidos=("casos_respondidos", "sum"),
-                    casos_en_sla=("casos_en_sla", "sum"),
-                )
-                sla_team["pct_sla"] = sla_team.apply(
-                    lambda row: (row["casos_en_sla"] / row["casos_respondidos"] * 100)
-                    if row["casos_respondidos"]
-                    else 0,
-                    axis=1,
-                )
-                sla_team["pct_sla"] = sla_team["pct_sla"].round(2)
-                if "team_uuid" in sla_team.columns:
-                    sla_team = sla_team.drop(columns=["team_uuid"])
-                sla_team = sla_team.rename(
-                    columns={
-                        team_key: "Empresa",
-                        "casos_respondidos": "Casos Respondidos",
-                        "casos_en_sla": "Casos en SLA",
-                        "pct_sla": "% SLA",
-                    }
-                )
-                resumen_equipos = api_client.frt_resumen_equipos(start, end)
-                resumen_rows = (
-                    resumen_equipos.get("data", resumen_equipos)
-                    if isinstance(resumen_equipos, dict)
-                    else resumen_equipos
-                )
-                df_resumen_eq = pd.DataFrame(resumen_rows)
-                if "team_name" in df_resumen_eq.columns:
-                    df_resumen_eq = df_resumen_eq[df_resumen_eq["team_name"] != "CHATBOT"]
-                if "team_name" in df_resumen_eq.columns and "casos_abiertos" in df_resumen_eq.columns:
-                    sla_team = sla_team.merge(
-                        df_resumen_eq[["team_name", "casos_abiertos"]].rename(
-                            columns={"team_name": "Empresa"}
-                        ),
-                        on="Empresa",
-                        how="left",
+            with donut_cols[1]:
+                if not pie_df.empty:
+                    fig_empresas = px.pie(pie_df, names="Empresa", values="Casos Recibidos")
+                    fig_empresas.update_traces(
+                        textinfo="percent+label",
+                        hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
                     )
-                    sla_team = sla_team.rename(columns={"casos_abiertos": "Casos Recibidos"})
-                    if "Casos Recibidos" in sla_team.columns:
-                        sla_team["Casos Recibidos"] = (
-                            sla_team["Casos Recibidos"].fillna(0).astype(int)
-                        )
-                    cols = sla_team.columns.tolist()
-                    if "Empresa" in cols and "Casos Respondidos" in cols and "Casos Recibidos" in cols:
-                        cols.remove("Casos Recibidos")
-                        cols.insert(cols.index("Casos Respondidos"), "Casos Recibidos")
-                        sla_team = sla_team[cols]
-                sla_team = prepare_table(sla_team)
-                st.dataframe(_style_sla(sla_team), use_container_width=True)
-                st.caption("Verde valor mas alto en %SLA, Rojo valor mas bajo en %SLA.")
-            else:
-                st.info("Sin datos de SLA por empresa.")
+                    fig_empresas.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig_empresas, use_container_width=True)
+                else:
+                    st.info("Sin datos para la distribucion por unidad.")
         else:
-            st.info("Sin datos de SLA por empresa.")
+            with donut_cols[1]:
+                st.info("Sin datos para la distribucion por unidad.")
 
-        st.markdown("#### Resumen por empresas: Tiempo de primera respuesta")
-        render_description(
-            "Muestra el tiempo que demora un agente en general en contestar por primera vez a una conversación, tenemos 3 mediciones distintas: promedio, mediana y percentil 90 (el tiempo de primera respuesta promedio en el 90% de los casos)."
+        df_pend = pd.DataFrame(_extract_rows(pendientes))
+        casos_pendientes = (
+            float(df_pend["casos_pendientes"].sum())
+            if not df_pend.empty and "casos_pendientes" in df_pend.columns
+            else 0.0
         )
-        resumen_equipos = api_client.frt_resumen_equipos(start, end)
-        teams_rows = (
-            resumen_equipos.get("data", resumen_equipos)
-            if isinstance(resumen_equipos, dict)
-            else resumen_equipos
-        )
-        df_teams = pd.DataFrame(teams_rows)
-        if not df_teams.empty:
-            if "team_uuid" in df_teams.columns:
-                df_teams = df_teams.drop(columns=["team_uuid"])
-            for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
-                if col in df_teams.columns:
-                    df_teams[col] = df_teams[col].apply(format_seconds)
-            df_teams = df_teams[df_teams["team_name"] != "CHATBOT"]
-            df_teams = df_teams.rename(
-                columns={
-                    "team_name": "Empresa",
-                    "casos_abiertos": "Casos Abiertos",
-                    "casos_respondidos": "Casos Respondidos",
-                    "avg_frt_seconds": "Tiempo de primera respuesta Promedio (s)",
-                    "median_frt_seconds": "Tiempo de primera respuesta Mediana (s)",
-                    "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
-                }
-            )
-            st.dataframe(prepare_table(df_teams), use_container_width=True)
+        casos_en_curso = entradas - casos_pendientes
+
+        kpi_cols = st.columns(4)
+        with kpi_cols[0]:
+            _render_kpi_card("Casos recibidos", int(entradas))
+        with kpi_cols[1]:
+            _render_kpi_card("Casos Pendientes", int(casos_pendientes))
+        with kpi_cols[2]:
+            _render_kpi_card("Atendidos mismo dia", int(atendidas))
+        with kpi_cols[3]:
+            _render_kpi_card("Casos en curso", int(casos_en_curso))
+
+        st.markdown("#### Ranking de agentes")
+        ranking_df = _build_ranking_df(start, end)
+        if not ranking_df.empty:
+            styler = _style_ranking(ranking_df)
+            st.dataframe(styler, use_container_width=True)
         else:
-            st.info("Sin datos por empresas.")
-
-        st.markdown("#### Detalle por dia")
-        render_description(
-            "Cantidad de casos recibidos comparada con la cantidad de casos atendidos en ese mismo día, junto con su porcentaje correspondiente."
-        )
-        st.markdown(
-            "Objetivo: Porcentaje de casos atendidos en el mismo dia sea mayor al 90% (verde), luego si esta entre 80% y 90% (amarillo), menor a 80% (rojo)."
-        )
-        table_df = prepare_table(df)
-        st.dataframe(_style_atendidas(table_df), use_container_width=True)
-        st.caption("% Atendidas: Verde mayor o igual a 90%, Amarillo 80% entre 90%, Rojo menos del 80%.")
-        if "fecha" in df.columns and "total" in df.columns:
-            fig = charts.line_chart(df, x="fecha", y="total", title="Casos atendidos")
-            st.plotly_chart(fig, use_container_width=True)
+            st.info("Sin datos de ranking para el rango seleccionado.")
     else:
+        st.info("Resumen no disponible para el rango seleccionado.")
+
+    rows = _extract_rows(data)
+    df = pd.DataFrame(rows)
+    if df.empty:
         st.info("Sin datos para el rango seleccionado.")
+        return
+
+    if "team_uuid" in df.columns:
+        df = df.drop(columns=["team_uuid"])
+    if "team_name" in df.columns:
+        df = df[df["team_name"] != "CHATBOT"]
+    if "pct_atendidas" in df.columns:
+        df["pct_atendidas"] = pd.to_numeric(df["pct_atendidas"], errors="coerce").fillna(0).round(2)
+
+    df = df.rename(
+        columns={
+            "dia": "Dia",
+            "agent_email": "Agente",
+            "conversaciones_entrantes": "Casos Recibidos",
+            "conversaciones_atendidas_same_day": "Casos Atendidos (Mismo Dia)",
+            "pct_atendidas": "% Atendidas",
+        }
+    )
+
+    st.markdown("#### Detalle por dia")
+    render_description(
+        "Cantidad de casos recibidos comparada con la cantidad de casos atendidos en ese mismo día, junto con su porcentaje correspondiente."
+    )
+    st.markdown(
+        "Objetivo: Porcentaje de casos atendidos en el mismo dia sea mayor al 90% (verde), luego si esta entre 80% y 90% (amarillo), menor a 80% (rojo)."
+    )
+    st.dataframe(_style_atendidas(prepare_table(df)), use_container_width=True)
+    st.caption("% Atendidas: Verde mayor o igual a 90%, Amarillo 80% entre 90%, Rojo menos del 80%.")
 
 
 if __name__ == "__main__":
