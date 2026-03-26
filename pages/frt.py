@@ -6,7 +6,15 @@ import streamlit_shadcn_ui as ui
 
 from config import DEFAULT_FRT_LIMIT, DEFAULT_MAX_SECONDS
 from helpers import api_client
+from helpers.agent_mapping import EMAIL_NAME_OVERRIDES, normalize_agent_key, with_agent_display_names
+from helpers.calls_ranking import load_attended_calls_by_agent
 from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, prepare_table, quick_range, render_description
+
+
+def _exclude_null_agents(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or "agent_email" not in df.columns:
+        return df
+    return df[df["agent_email"].notna()]
 
 
 def _init_state(key: str):
@@ -16,6 +24,11 @@ def _init_state(key: str):
         st.session_state["frt_mode"] = "custom"
     if "frt_team" not in st.session_state:
         st.session_state["frt_team"] = ""
+
+
+def _display_name_from_normalized(agent_key: str) -> str:
+    parts = [part for part in str(agent_key).split(" ") if part]
+    return " ".join(part.capitalize() for part in parts)
 
 
 def render():
@@ -66,6 +79,7 @@ def render():
 
     team_uuid = ""
     agent_email = ""
+    ranking_max_seconds = int(st.session_state.get("frt_max_seconds", DEFAULT_MAX_SECONDS))
 
     if mode == "24h":
         frt_data = api_client.frt_ultimas_24h(team_uuid, agent_email)
@@ -76,12 +90,19 @@ def render():
     else:
         frt_data = api_client.frt_tiempo_primera_respuesta(start, end, team_uuid, agent_email)
 
-    ranking = api_client.frt_ranking_agentes(start, end, limit=100, team_uuid=team_uuid)
+    ranking = api_client.frt_ranking_agentes_compuesto(
+        start,
+        end,
+        max_seconds=ranking_max_seconds,
+        limit=100,
+        team_uuid=team_uuid,
+    )
     resumen_agentes = api_client.frt_resumen_agentes(start, end)
     resumen_equipos = api_client.frt_resumen_equipos(start, end)
 
     rows = frt_data.get("data", frt_data) if isinstance(frt_data, dict) else frt_data
     df = pd.DataFrame(rows)
+    df = _exclude_null_agents(df)
     if not df.empty:
         team_names = (
             [n for n in sorted(df["team_name"].dropna().unique().tolist()) if n != "CHATBOT"]
@@ -265,10 +286,11 @@ def render():
 
     st.markdown("#### Ranking de agentes")
     render_description(
-        "Agentes rankeados por desempeño en base al tiempo de primera respuesta promedio."
+        "Ranking compuesto por agente basado en SLA, porcentaje de resueltos y abandonos invertidos."
     )
     rank_rows = ranking.get("data", ranking) if isinstance(ranking, dict) else ranking
     rank_df = pd.DataFrame(rank_rows)
+    rank_df = _exclude_null_agents(rank_df)
     rank_df = exclude_agent_rows(rank_df, "olartefacundo@outlook.com")
     if "agent_email" in rank_df.columns:
         rank_df = rank_df[rank_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
@@ -279,69 +301,189 @@ def render():
         else resumen_agentes
     )
     resumen_df = pd.DataFrame(resumen_rows)
+    resumen_df = _exclude_null_agents(resumen_df)
     if "agent_email" in resumen_df.columns:
         resumen_df = resumen_df[resumen_df["agent_email"] != "supervisora_callc@multireg.com.ar"]
 
+    calls_by_agent = load_attended_calls_by_agent(start, end)
+
     if not rank_df.empty:
-        if "agent_email" in resumen_df.columns:
-            rank_df = rank_df.merge(
-                resumen_df[["agent_email", "casos_abiertos"]],
-                on="agent_email",
-                how="left",
+        rank_df = with_agent_display_names(rank_df, email_col="agent_email", display_col="agent_name")
+        rank_df["origen_ranking"] = "WhatsApp + Llamadas"
+
+    known_name_by_key: dict[str, str] = {}
+    known_email_by_key: dict[str, str] = {}
+    for email, name in EMAIL_NAME_OVERRIDES.items():
+        agent_key = normalize_agent_key(name)
+        if not agent_key:
+            continue
+        known_name_by_key.setdefault(agent_key, name)
+        known_email_by_key.setdefault(agent_key, email)
+
+    if not rank_df.empty and "agent_name" in rank_df.columns:
+        for _, row in rank_df[["agent_name", "agent_email"]].iterrows():
+            name_value = row.get("agent_name")
+            email_value = row.get("agent_email")
+            agent_key = normalize_agent_key(name_value)
+            if not agent_key:
+                continue
+            if isinstance(name_value, str) and name_value.strip():
+                known_name_by_key.setdefault(agent_key, name_value.strip())
+            if isinstance(email_value, str) and email_value.strip():
+                known_email_by_key.setdefault(agent_key, email_value.strip())
+
+    existing_agent_keys: set[str] = set()
+    if not rank_df.empty and "agent_name" in rank_df.columns:
+        existing_agent_keys = {
+            normalize_agent_key(name)
+            for name in rank_df["agent_name"].tolist()
+            if normalize_agent_key(name)
+        }
+
+    call_only_rows: list[dict[str, object]] = []
+    for agent_key, attended_calls in calls_by_agent.items():
+        if attended_calls <= 0 or agent_key in existing_agent_keys:
+            continue
+        display_name = known_name_by_key.get(agent_key, _display_name_from_normalized(agent_key))
+        row = {
+            "agent_email": known_email_by_key.get(agent_key, "N/A"),
+            "agent_name": display_name,
+            "origen_ranking": "Solo Llamadas",
+            "casos_respondidos": 0,
+            "casos_en_sla": 0,
+            "pct_sla": 0.0,
+            "casos_abiertos_resueltos": 0,
+            "casos_resueltos": 0,
+            "pct_resueltos": 0.0,
+            "casos_abiertos_abandonados": 0,
+            "casos_abandonados_24h": 0,
+            "pct_abandonados_24h": 0.0,
+            "score_abandonos_invertido": 0.0,
+            "puntos_cumplimiento_atencion": 0.0,
+            "puntos_resolucion_efectiva": 0.0,
+            "puntos_abandonos": 0.0,
+            "score_final": 0.0,
+        }
+        call_only_rows.append(row)
+
+    if call_only_rows:
+        rank_df = pd.concat([rank_df, pd.DataFrame(call_only_rows)], ignore_index=True, sort=False)
+
+    if not rank_df.empty:
+        if "origen_ranking" not in rank_df.columns:
+            rank_df["origen_ranking"] = "WhatsApp + Llamadas"
+        if "agent_name" not in rank_df.columns:
+            if "agent_email" in rank_df.columns:
+                rank_df["agent_name"] = rank_df["agent_email"].astype(str)
+            else:
+                rank_df["agent_name"] = ""
+
+        resolved_counts = (
+            pd.to_numeric(rank_df.get("casos_resueltos"), errors="coerce")
+            .fillna(0)
+            .clip(lower=0)
+            .astype(int)
+            if "casos_resueltos" in rank_df.columns
+            else pd.Series(0, index=rank_df.index, dtype="int64")
+        )
+        rank_df["puntos_casos_resueltos_extra"] = (resolved_counts // 5).astype(int)
+
+        if "agent_name" in rank_df.columns:
+            rank_df["llamadas_atendidas"] = (
+                rank_df["agent_name"]
+                .apply(lambda name: int(calls_by_agent.get(normalize_agent_key(name), 0)))
+                .astype(int)
             )
-        rank_df = rank_df.reset_index(drop=True)
+        else:
+            rank_df["llamadas_atendidas"] = 0
+        rank_df["puntos_llamadas"] = (rank_df["llamadas_atendidas"] // 2).astype(int)
+
+        base_score = (
+            pd.to_numeric(rank_df.get("score_final"), errors="coerce")
+            .fillna(0)
+            if "score_final" in rank_df.columns
+            else pd.Series(0, index=rank_df.index, dtype="float64")
+        )
+        rank_df["score_final_ajustado"] = (
+            base_score + rank_df["puntos_casos_resueltos_extra"] + rank_df["puntos_llamadas"]
+        )
+
+        rank_df = rank_df.sort_values(
+            ["score_final_ajustado", "agent_email"], ascending=[False, True]
+        ).reset_index(drop=True)
         rank_df.insert(0, "N", rank_df.index + 1)
-        if "team_uuid" in rank_df.columns:
-            rank_df = rank_df.drop(columns=["team_uuid"])
 
         numeric_rank = rank_df.copy()
-        avg_series = numeric_rank["avg_frt_seconds"] if "avg_frt_seconds" in numeric_rank.columns else None
-        nonzero_avg = avg_series[avg_series > 0] if avg_series is not None else None
-        min_avg = float(nonzero_avg.min()) if nonzero_avg is not None and not nonzero_avg.empty else None
-        max_avg = float(nonzero_avg.max()) if nonzero_avg is not None and not nonzero_avg.empty else None
-
-        for col in ("avg_frt_seconds", "median_frt_seconds", "p90_frt_seconds"):
-            if col in rank_df.columns:
-                rank_df[col] = rank_df[col].apply(format_seconds)
+        score_series = (
+            numeric_rank["score_final_ajustado"] if "score_final_ajustado" in numeric_rank.columns else None
+        )
+        min_score = float(score_series.min()) if score_series is not None and not score_series.empty else None
+        max_score = float(score_series.max()) if score_series is not None and not score_series.empty else None
 
         rank_df = rank_df.rename(
             columns={
-                "agent_email": "Agente",
-                "casos_abiertos": "Casos Recibidos",
-                "casos_respondidos": "Casos Respondidos",
-                "avg_frt_seconds": "Tiempo de primera respuesta Promedio (s)",
-                "median_frt_seconds": "Tiempo de primera respuesta Mediana (s)",
-                "p90_frt_seconds": "Tiempo de primera respuesta P90 (s)",
+                "agent_name": "Agente",
+                "agent_email": "Email",
+                "origen_ranking": "Origen",
+                "llamadas_atendidas": "Llamadas Atendidas",
+                "puntos_casos_resueltos_extra": "Puntos Casos Resueltos (+1 c/5)",
+                "puntos_llamadas": "Puntos Llamadas (+1 c/2)",
+                "casos_respondidos": "Casos Respondidos (SLA)",
+                "casos_en_sla": "Casos en SLA",
+                "pct_sla": "% SLA",
+                "casos_abiertos_resueltos": "Casos Recibidos (Resolucion)",
+                "casos_resueltos": "Casos Resueltos",
+                "pct_resueltos": "% Resueltos",
+                "casos_abiertos_abandonados": "Casos Recibidos (Abandonos)",
+                "casos_abandonados_24h": "Casos Abandonados (+24h)",
+                "pct_abandonados_24h": "% Abandonados",
+                "score_abandonos_invertido": "Score Invertido Abandonos",
+                "puntos_cumplimiento_atencion": "Puntos Cumplimiento (35%)",
+                "puntos_resolucion_efectiva": "Puntos Resolucion (25%)",
+                "puntos_abandonos": "Puntos Abandonos (20%)",
+                "score_final": "Score Base (0-80)",
+                "score_final_ajustado": "Score Final",
             }
         )
-        if "Casos Recibidos" in rank_df.columns:
-            cols = rank_df.columns.tolist()
-            if "Agente" in cols and "Casos Respondidos" in cols:
-                cols.remove("Casos Recibidos")
-                insert_at = cols.index("Casos Respondidos")
-                cols.insert(insert_at, "Casos Recibidos")
-                rank_df = rank_df[cols]
+        ordered_cols = [col for col in ["N", "Agente", "Email", "Origen"] if col in rank_df.columns]
+        ordered_cols.extend([col for col in rank_df.columns if col not in ordered_cols])
+        rank_df = rank_df[ordered_cols]
         rank_df = prepare_table(rank_df)
 
         def _style_rank_row(row):
-            if min_avg is None or max_avg is None:
+            if min_score is None or max_score is None:
                 return [""] * len(row)
             idx = row.name - 1
             try:
-                value = float(numeric_rank.loc[idx, "avg_frt_seconds"])
+                value = float(numeric_rank.loc[idx, "score_final_ajustado"])
             except Exception:
                 return [""] * len(row)
-            if value == min_avg:
+            if value == max_score:
                 return ["color: #16a34a; font-weight: 700;"] * len(row)
-            if value == max_avg:
+            if value == min_score:
                 return ["color: #dc2626; font-weight: 700;"] * len(row)
             return [""] * len(row)
 
         styler = rank_df.style.apply(_style_rank_row, axis=1)
+        format_map = {
+            "% SLA": "{:.2f}",
+            "% Resueltos": "{:.2f}",
+            "% Abandonados": "{:.2f}",
+            "Score Invertido Abandonos": "{:.2f}",
+            "Puntos Cumplimiento (35%)": "{:.2f}",
+            "Puntos Resolucion (25%)": "{:.2f}",
+            "Puntos Abandonos (20%)": "{:.2f}",
+            "Score Base (0-80)": "{:.2f}",
+            "Score Final": "{:.2f}",
+        }
+        existing_format_map = {k: v for k, v in format_map.items() if k in rank_df.columns}
+        if existing_format_map:
+            styler = styler.format(existing_format_map)
         st.dataframe(styler, use_container_width=True)
         st.caption(
-            "Verde: mejor rankeado. "
-            "Rojo: peor rankeado."
+            "Score Final = (% SLA x 0.35) + (% Resueltos x 0.25) + "
+            "((100 - % Abandonados) x 0.20) + puntos por casos resueltos + puntos por llamadas. "
+            "Verde: mejor score. Rojo: peor score."
         )
     else:
         st.info("Sin datos de ranking disponibles.")
@@ -358,6 +500,7 @@ def render():
     )
     sla_rows = sla.get("data", sla) if isinstance(sla, dict) else sla
     df_sla = pd.DataFrame(sla_rows)
+    df_sla = _exclude_null_agents(df_sla)
     df_sla = exclude_agent_rows(df_sla, "olartefacundo@outlook.com")
     def _style_sla(df: pd.DataFrame):
         if "% SLA" not in df.columns:
@@ -492,6 +635,7 @@ def render():
     )
     agents_rows = resumen_agentes.get("data", resumen_agentes) if isinstance(resumen_agentes, dict) else resumen_agentes
     df_agents = pd.DataFrame(agents_rows)
+    df_agents = _exclude_null_agents(df_agents)
     df_agents = exclude_agent_rows(df_agents, "olartefacundo@outlook.com")
     if not df_agents.empty:
         if "team_uuid" in df_agents.columns:

@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from typing import Optional, Tuple
 
 import streamlit as st
+from helpers.agent_mapping import resolve_agent_name
 
 
 def quick_range(days: int) -> Tuple[date, date]:
@@ -65,10 +66,22 @@ def render_description(text: str) -> None:
     st.markdown(f"<div class=\"desc-text\">{text}</div>", unsafe_allow_html=True)
 
 
+def _map_agent_cell(value):
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text or "@" not in text:
+        return value
+    return resolve_agent_name(text)
+
+
 def prepare_table(df):
     if df is None or df.empty:
         return df
     df = df.copy()
+    for col in ("agent_email", "Agente"):
+        if col in df.columns:
+            df[col] = df[col].apply(_map_agent_cell)
     numeric_cols = df.select_dtypes(include="number").columns
     if len(numeric_cols) > 0:
         df[numeric_cols] = df[numeric_cols].round(2)

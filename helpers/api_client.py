@@ -326,6 +326,29 @@ def frt_ranking_agentes(
     )
 
 
+def frt_ranking_agentes_compuesto(
+    desde: date,
+    hasta: date,
+    max_seconds: int = 300,
+    limit: int = 100,
+    team_uuid: str = "",
+    as_of: str = "",
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "desde": str(desde),
+        "hasta": str(hasta),
+        "max_seconds": max_seconds,
+        "limit": limit,
+        "team_uuid": team_uuid,
+    }
+    if as_of:
+        params["as_of"] = as_of
+    return get_json(
+        "/metrics/tiempo-primera-respuesta/ranking-agentes-compuesto",
+        params,
+    )
+
+
 def frt_resumen_agentes(desde: date, hasta: date) -> Dict[str, Any]:
     return get_json(
         "/metrics/tiempo-primera-respuesta/resumen-agentes",
