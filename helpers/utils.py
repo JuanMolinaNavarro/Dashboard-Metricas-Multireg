@@ -13,11 +13,22 @@ def quick_range(days: int) -> Tuple[date, date]:
     return start, end
 
 
+def current_month_range() -> Tuple[date, date]:
+    today = date.today()
+    return today.replace(day=1), today
+
+
+def prev_month_range() -> Tuple[date, date]:
+    today = date.today()
+    last_day_prev = today.replace(day=1) - timedelta(days=1)
+    return last_day_prev.replace(day=1), last_day_prev
+
+
 def date_range_picker(key: str, default: Optional[Tuple[date, date]] = None) -> Tuple[date, date]:
     if default is None:
         default = quick_range(7)
     start, end = default
-    picked = st.date_input("Rango de fechas", value=(start, end), key=key)
+    picked = st.date_input("Rango de fechas", value=(start, end), key=key, max_value=date.today())
     if isinstance(picked, tuple) and len(picked) == 2:
         return picked[0], picked[1]
     return start, end

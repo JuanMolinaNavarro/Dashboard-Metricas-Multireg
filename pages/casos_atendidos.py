@@ -8,7 +8,7 @@ from config import DEFAULT_MAX_SECONDS
 from helpers import api_client
 from helpers.agent_mapping import normalize_agent_key, with_agent_display_names
 from helpers.calls_ranking import load_attended_calls_by_agent
-from helpers.utils import date_range_picker, prepare_table, quick_range, render_description
+from helpers.utils import current_month_range, date_range_picker, prepare_table, prev_month_range, quick_range, render_description
 
 
 def _init_state(key: str) -> None:
@@ -141,7 +141,7 @@ def _style_ranking(df_numeric: pd.DataFrame):
         styler = styler.applymap(_color_value, subset=[column])
 
     if "Score" in df_display.columns:
-        styler = styler.set_properties(subset=["Score"], **{"background-color": "#0072a0"})
+        styler = styler.set_properties(subset=["Score"], **{"background-color": "#cc7f0a36"})
 
     styler = styler.format(
         {
@@ -217,11 +217,14 @@ def render():
     _init_state("casos_atendidos_range")
     start, end = st.session_state["casos_atendidos_range"]
 
-    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Personalizado"]
+    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Este mes", "Mes anterior", "Personalizado"]
     mode_to_label = {
         "24h": "Ultimas 24h",
         "48h": "Ultimas 48h",
         "7d": "Ultimos 7 dias",
+        "30d": "Ultimos 30 dias",
+        "this_month": "Este mes",
+        "prev_month": "Mes anterior",
         "custom": "Personalizado",
     }
     label_to_mode = {v: k for k, v in mode_to_label.items()}
@@ -247,14 +250,24 @@ def render():
             "casos_atendidos_picker",
             (start, end),
         )
-    else:
-        if mode == "24h":
-            st.session_state["casos_atendidos_range"] = quick_range(1)
-        elif mode == "48h":
-            st.session_state["casos_atendidos_range"] = quick_range(2)
-        else:
-            st.session_state["casos_atendidos_range"] = quick_range(7)
+    elif mode == "24h":
+        st.session_state["casos_atendidos_range"] = quick_range(1)
         st.caption("Usando rango rapido. Selecciona Personalizado para elegir fechas.")
+    elif mode == "48h":
+        st.session_state["casos_atendidos_range"] = quick_range(2)
+        st.caption("Usando rango rapido. Selecciona Personalizado para elegir fechas.")
+    elif mode == "7d":
+        st.session_state["casos_atendidos_range"] = quick_range(7)
+        st.caption("Usando rango rapido. Selecciona Personalizado para elegir fechas.")
+    elif mode == "30d":
+        st.session_state["casos_atendidos_range"] = quick_range(30)
+        st.caption("Usando rango rapido. Selecciona Personalizado para elegir fechas.")
+    elif mode == "this_month":
+        st.session_state["casos_atendidos_range"] = current_month_range()
+        st.caption("Usando este mes. Selecciona Personalizado para elegir fechas.")
+    else:
+        st.session_state["casos_atendidos_range"] = prev_month_range()
+        st.caption("Usando mes anterior. Selecciona Personalizado para elegir fechas.")
 
     start, end = st.session_state["casos_atendidos_range"]
     st.markdown(f"### Rango seleccionado: {start} a {end}")
@@ -366,7 +379,11 @@ def render():
             if not df_pend.empty and "casos_pendientes" in df_pend.columns
             else 0.0
         )
-        casos_en_curso = entradas - casos_pendientes
+        total_resueltos = (
+            float(df_res["casos_resueltos"].sum())
+            if not df_res.empty and "casos_resueltos" in df_res.columns
+            else 0.0
+        )
 
         kpi_cols = st.columns(4)
         with kpi_cols[0]:
@@ -376,7 +393,7 @@ def render():
         with kpi_cols[2]:
             _render_kpi_card("Atendidos mismo dia", int(atendidas))
         with kpi_cols[3]:
-            _render_kpi_card("Casos en curso", int(casos_en_curso))
+            _render_kpi_card("Casos resueltos", int(total_resueltos))
 
         st.markdown("#### Ranking de agentes")
         ranking_df = _build_ranking_df(start, end)

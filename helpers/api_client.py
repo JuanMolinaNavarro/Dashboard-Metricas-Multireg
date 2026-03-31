@@ -55,6 +55,34 @@ def list_users() -> Dict[str, Any]:
     return response.json()
 
 
+def get_eventos(desde: date, hasta: date) -> list:
+    return get_json("/metrics/eventos", {"desde": str(desde), "hasta": str(hasta)})
+
+
+def create_evento(
+    fecha: str,
+    titulo: str,
+    descripcion: str = "",
+    color: str = "#EF553B",
+    unidad: str = "",
+) -> Dict[str, Any]:
+    url = f"{API_BASE_URL}/metrics/eventos"
+    payload: Dict[str, Any] = {"fecha": fecha, "titulo": titulo, "color": color}
+    if descripcion:
+        payload["descripcion"] = descripcion
+    if unidad:
+        payload["unidad"] = unidad
+    response = requests.post(url, json=payload, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def delete_evento(evento_id: int) -> None:
+    url = f"{API_BASE_URL}/metrics/eventos/{evento_id}"
+    response = requests.delete(url, timeout=30)
+    response.raise_for_status()
+
+
 def _recent_range(days: int) -> tuple[date, date]:
     end = date.today()
     start = end - timedelta(days=days)
@@ -396,6 +424,20 @@ def casos_resueltos(
 ) -> Dict[str, Any]:
     return get_json(
         "/metrics/casos-resueltos",
+        {
+            "desde": str(desde),
+            "hasta": str(hasta),
+            "team_uuid": team_uuid,
+            "agent_email": agent_email,
+        },
+    )
+
+
+def casos_cerrados_mismo_dia(
+    desde: date, hasta: date, team_uuid: str = "", agent_email: str = ""
+) -> Dict[str, Any]:
+    return get_json(
+        "/metrics/casos-cerrados-mismo-dia",
         {
             "desde": str(desde),
             "hasta": str(hasta),
