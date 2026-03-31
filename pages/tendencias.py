@@ -55,7 +55,7 @@ def _load_volumen(start, end) -> pd.DataFrame:
 
 
 def _load_abandonados(start, end) -> pd.DataFrame:
-    rows = _to_list(api_client.casos_abandonados_24h(start, end))
+    rows = _to_list(api_client.casos_abandonados_historico(start, end))
     if not rows:
         return pd.DataFrame()
     df = _clean(pd.DataFrame(rows))
@@ -367,9 +367,9 @@ def render():
     start, end = st.session_state["tend_range"]
 
     # --- Range selector ---
-    range_options = ["Esta semana", "Ultimos 30 dias", "Ultimos 90 dias", "Personalizado"]
+    range_options = ["Ultimos 7 dias", "Ultimos 30 dias", "Ultimos 90 dias", "Personalizado"]
     mode_to_label = {
-        "week": "Esta semana",
+        "7d": "Ultimos 7 dias",
         "30d": "Ultimos 30 dias",
         "90d": "Ultimos 90 dias",
         "custom": "Personalizado",
@@ -382,7 +382,7 @@ def render():
         selected_label = st.radio(
             "Rango",
             range_options,
-            index=range_options.index(current_label),
+            index=range_options.index(current_label) if current_label in range_options else 0,
             horizontal=True,
             key="tend_range_choice",
             label_visibility="collapsed",
@@ -393,10 +393,8 @@ def render():
     new_mode = label_to_mode.get(selected_label, "custom")
     if new_mode != st.session_state["tend_mode"] or refresh:
         st.session_state["tend_mode"] = new_mode
-        if new_mode == "week":
-            today = date_type.today()
-            week_start = today - timedelta(days=today.weekday())
-            st.session_state["tend_range"] = (week_start, today)
+        if new_mode == "7d":
+            st.session_state["tend_range"] = quick_range(7)
             start, end = st.session_state["tend_range"]
         elif new_mode == "30d":
             st.session_state["tend_range"] = quick_range(30)

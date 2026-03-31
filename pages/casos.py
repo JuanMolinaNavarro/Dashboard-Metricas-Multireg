@@ -78,20 +78,16 @@ def render():
 
     team_uuid = ""
     agent_email = ""
-    as_of = ""
 
     if mode == "24h":
         resueltos = api_client.casos_resueltos_ultimas_24h(team_uuid, agent_email)
-        abandonados = api_client.casos_abandonados_24h_ultimas_24h(team_uuid, agent_email, as_of)
     elif mode == "48h":
         resueltos = api_client.casos_resueltos_ultimas_48h(team_uuid, agent_email)
-        abandonados = api_client.casos_abandonados_24h_ultimas_48h(team_uuid, agent_email, as_of)
     elif mode == "7d":
         resueltos = api_client.casos_resueltos_ultimos_7_dias(team_uuid, agent_email)
-        abandonados = api_client.casos_abandonados_24h_ultimos_7_dias(team_uuid, agent_email, as_of)
     else:
         resueltos = api_client.casos_resueltos(start, end, team_uuid, agent_email)
-        abandonados = api_client.casos_abandonados_24h(start, end, team_uuid, agent_email, as_of)
+    abandonados = api_client.casos_abandonados_historico(start, end, team_uuid, agent_email)
 
     res_rows = resueltos.get("data", resueltos) if isinstance(resueltos, dict) else resueltos
     ab_rows = abandonados.get("data", abandonados) if isinstance(abandonados, dict) else abandonados
