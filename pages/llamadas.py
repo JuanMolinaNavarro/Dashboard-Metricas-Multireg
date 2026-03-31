@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from helpers.utils import date_range_picker, format_seconds, prepare_table, render_description
+from helpers.utils import current_month_range, date_range_picker, format_seconds, prepare_table, prev_month_range, render_description
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 REPORTE_PATH = DATA_DIR / "reporte.csv"
@@ -466,11 +466,11 @@ def render() -> None:
 
     if "llamadas_range" not in st.session_state:
         today = date.today()
-        st.session_state["llamadas_range"] = (today - timedelta(days=7), today)
+        st.session_state["llamadas_range"] = (today, today)
     if "llamadas_quick" not in st.session_state:
         st.session_state["llamadas_quick"] = "Hoy"
 
-    quick_options = ["Hoy", "Ayer", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
+    quick_options = ["Hoy", "Ayer", "Ultimos 7 dias", "Ultimos 30 dias", "Este mes", "Mes anterior", "Personalizado"]
     quick_cols = st.columns([6, 1], gap="small")
     with quick_cols[0]:
         selected_quick = st.radio(
@@ -494,6 +494,10 @@ def render() -> None:
         st.session_state["llamadas_range"] = (today - timedelta(days=7), today)
     elif selected_quick == "Ultimos 30 dias":
         st.session_state["llamadas_range"] = (today - timedelta(days=30), today)
+    elif selected_quick == "Este mes":
+        st.session_state["llamadas_range"] = current_month_range()
+    elif selected_quick == "Mes anterior":
+        st.session_state["llamadas_range"] = prev_month_range()
 
     if selected_quick == "Personalizado":
         range_start, range_end = date_range_picker(

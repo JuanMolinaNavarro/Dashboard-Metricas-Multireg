@@ -5,7 +5,7 @@ import streamlit as st
 import streamlit_shadcn_ui as ui
 
 from helpers import api_client, charts
-from helpers.utils import date_range_picker, exclude_agent_rows, format_seconds, prepare_table, quick_range, render_description
+from helpers.utils import current_month_range, date_range_picker, exclude_agent_rows, format_seconds, prepare_table, prev_month_range, quick_range, render_description
 
 
 def _init_state(key: str):
@@ -23,11 +23,14 @@ def render():
     _init_state("duracion_range")
     start, end = st.session_state["duracion_range"]
 
-    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Personalizado"]
+    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Este mes", "Mes anterior", "Personalizado"]
     mode_to_label = {
         "24h": "Ultimas 24h",
         "48h": "Ultimas 48h",
         "7d": "Ultimos 7 dias",
+        "30d": "Ultimos 30 dias",
+        "this_month": "Este mes",
+        "prev_month": "Mes anterior",
         "custom": "Personalizado",
     }
     label_to_mode = {v: k for k, v in mode_to_label.items()}
@@ -60,9 +63,18 @@ def render():
     elif mode == "48h":
         st.session_state["duracion_range"] = quick_range(2)
         st.caption("Usando rango rapido (48h). Selecciona Personalizado para elegir fechas.")
-    else:
+    elif mode == "7d":
         st.session_state["duracion_range"] = quick_range(7)
         st.caption("Usando rango rapido (7 dias). Selecciona Personalizado para elegir fechas.")
+    elif mode == "30d":
+        st.session_state["duracion_range"] = quick_range(30)
+        st.caption("Usando rango rapido (30 dias). Selecciona Personalizado para elegir fechas.")
+    elif mode == "this_month":
+        st.session_state["duracion_range"] = current_month_range()
+        st.caption("Usando este mes. Selecciona Personalizado para elegir fechas.")
+    else:
+        st.session_state["duracion_range"] = prev_month_range()
+        st.caption("Usando mes anterior. Selecciona Personalizado para elegir fechas.")
 
     start, end = st.session_state["duracion_range"]
 
