@@ -447,6 +447,23 @@ def casos_cerrados_mismo_dia(
     )
 
 
+def casos_abandonados_historico(
+    desde: date,
+    hasta: date,
+    team_uuid: str = "",
+    agent_email: str = "",
+) -> Dict[str, Any]:
+    return get_json(
+        "/metrics/casos-abandonados-historico",
+        {
+            "desde": str(desde),
+            "hasta": str(hasta),
+            "team_uuid": team_uuid,
+            "agent_email": agent_email,
+        },
+    )
+
+
 def casos_abandonados_24h(
     desde: date,
     hasta: date,
