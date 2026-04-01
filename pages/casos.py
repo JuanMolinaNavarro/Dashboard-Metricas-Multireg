@@ -6,14 +6,14 @@ import streamlit as st
 import streamlit_shadcn_ui as ui
 
 from helpers import api_client, charts
-from helpers.utils import current_month_range, date_range_picker, exclude_agent_rows, prepare_table, prev_month_range, quick_range, render_description
+from helpers.utils import date_range_picker, exclude_agent_rows, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str):
     if key not in st.session_state:
         st.session_state[key] = quick_range(7)
     if "casos_mode" not in st.session_state:
-        st.session_state["casos_mode"] = "custom"
+        st.session_state["casos_mode"] = "7d"
     if "casos_empresa" not in st.session_state:
         st.session_state["casos_empresa"] = ""
 
@@ -24,14 +24,11 @@ def render():
     _init_state("casos_range")
     start, end = st.session_state["casos_range"]
 
-    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Este mes", "Mes anterior", "Personalizado"]
+    range_options = ["Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
     mode_to_label = {
-        "24h": "Ultimas 24h",
         "48h": "Ultimas 48h",
         "7d": "Ultimos 7 dias",
         "30d": "Ultimos 30 dias",
-        "this_month": "Este mes",
-        "prev_month": "Mes anterior",
         "custom": "Personalizado",
     }
     label_to_mode = {v: k for k, v in mode_to_label.items()}
@@ -55,9 +52,6 @@ def render():
 
     if mode == "custom":
         st.session_state["casos_range"] = date_range_picker("cas_picker", (start, end))
-    elif mode == "24h":
-        st.session_state["casos_range"] = quick_range(1)
-        st.caption("Usando rango rapido (24h). Selecciona Personalizado para elegir fechas.")
     elif mode == "48h":
         st.session_state["casos_range"] = quick_range(2)
         st.caption("Usando rango rapido (48h). Selecciona Personalizado para elegir fechas.")
@@ -67,12 +61,6 @@ def render():
     elif mode == "30d":
         st.session_state["casos_range"] = quick_range(30)
         st.caption("Usando rango rapido (30 dias). Selecciona Personalizado para elegir fechas.")
-    elif mode == "this_month":
-        st.session_state["casos_range"] = current_month_range()
-        st.caption("Usando este mes. Selecciona Personalizado para elegir fechas.")
-    else:
-        st.session_state["casos_range"] = prev_month_range()
-        st.caption("Usando mes anterior. Selecciona Personalizado para elegir fechas.")
 
     start, end = st.session_state["casos_range"]
 

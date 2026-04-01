@@ -187,8 +187,7 @@ CHART_DESCRIPTIONS = {
     "frt": (
         "Tiempo promedio entre la apertura del caso y el primer mensaje del agente (ponderado por casos respondidos).",
         "Valores altos señalan demoras en la atencion inicial. "
-        "Si una unidad tiene FRT sistematicamente mayor, conviene revisar la distribucion de carga o los procesos de asignacion. "
-        "El ideal operativo suele estar por debajo de los 5 minutos.",
+        "Si una unidad tiene FRT sistematicamente mayor, conviene revisar la distribucion de carga o los procesos de asignacion.",
     ),
     "duracion": (
         "Duracion promedio entre la apertura y el cierre de la conversacion (ponderada por conversaciones cerradas).",
@@ -481,7 +480,7 @@ def render():
 
     row2 = st.columns(2, gap="large")
     with row2[0]:
-        st.markdown("### Tiempo de primera respuesta")
+        st.markdown("### Tiempo de primera respuesta (FRT)")
         _render_chart_header("frt")
         st.plotly_chart(
             _line_chart(

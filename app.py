@@ -170,7 +170,7 @@ if st.session_state.get("show_admin_panel"):
     admin_panel.render()
     st.stop()
 
-TABS = ["Inicio", "Tiempo de primera respuesta", "Duracion", "Abandonos", "Llamadas", "Tendencias"]
+TABS = ["Inicio", "Tendencias", "Llamadas", "Abandonos", "FRT", "Duracion"]
 
 selected_tab = st.pills(
     "Sección",
@@ -185,7 +185,7 @@ if selected_tab is None:
 
 if selected_tab == "Inicio":
     casos_atendidos.render()
-elif selected_tab == "Tiempo de primera respuesta":
+elif selected_tab == "FRT":
     frt.render()
 elif selected_tab == "Duracion":
     duracion.render()
