@@ -8,14 +8,14 @@ from config import DEFAULT_MAX_SECONDS
 from helpers import api_client
 from helpers.agent_mapping import normalize_agent_key, with_agent_display_names
 from helpers.calls_ranking import load_attended_calls_by_agent
-from helpers.utils import current_month_range, date_range_picker, prepare_table, prev_month_range, quick_range, render_description
+from helpers.utils import date_range_picker, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str) -> None:
     if key not in st.session_state:
         st.session_state[key] = quick_range(7)
     if "casos_atendidos_mode" not in st.session_state:
-        st.session_state["casos_atendidos_mode"] = "custom"
+        st.session_state["casos_atendidos_mode"] = "7d"
 
 
 def _extract_rows(payload) -> list[dict]:
@@ -78,7 +78,8 @@ def _render_kpi_card(label: str, value: int) -> None:
 
 
 def _style_atendidas(df_styled: pd.DataFrame):
-    if "% Atendidas" not in df_styled.columns:
+    col = "% Casos Atendidos (Mismo Dia)"
+    if col not in df_styled.columns:
         return df_styled
 
     def _color(value):
@@ -92,8 +93,13 @@ def _style_atendidas(df_styled: pd.DataFrame):
             return "color: #f59e0b; font-weight: 600;"
         return "color: #16a34a; font-weight: 600;"
 
-    styler = df_styled.style.applymap(_color, subset=["% Atendidas"])
-    return styler.format({"% Atendidas": "{:.2f}"})
+    col_res = "% Casos Resueltos (En cualquier momento)"
+    fmt = {col: "{:.2f}"}
+    styler = df_styled.style.applymap(_color, subset=[col])
+    if col_res in df_styled.columns:
+        fmt[col_res] = "{:.2f}"
+        styler = styler.applymap(_color, subset=[col_res])
+    return styler.format(fmt)
 
 
 def _style_ranking(df_numeric: pd.DataFrame):
@@ -217,14 +223,12 @@ def render():
     _init_state("casos_atendidos_range")
     start, end = st.session_state["casos_atendidos_range"]
 
-    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Este mes", "Mes anterior", "Personalizado"]
+    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
     mode_to_label = {
         "24h": "Ultimas 24h",
         "48h": "Ultimas 48h",
         "7d": "Ultimos 7 dias",
         "30d": "Ultimos 30 dias",
-        "this_month": "Este mes",
-        "prev_month": "Mes anterior",
         "custom": "Personalizado",
     }
     label_to_mode = {v: k for k, v in mode_to_label.items()}
@@ -262,12 +266,6 @@ def render():
     elif mode == "30d":
         st.session_state["casos_atendidos_range"] = quick_range(30)
         st.caption("Usando rango rapido. Selecciona Personalizado para elegir fechas.")
-    elif mode == "this_month":
-        st.session_state["casos_atendidos_range"] = current_month_range()
-        st.caption("Usando este mes. Selecciona Personalizado para elegir fechas.")
-    else:
-        st.session_state["casos_atendidos_range"] = prev_month_range()
-        st.caption("Usando mes anterior. Selecciona Personalizado para elegir fechas.")
 
     start, end = st.session_state["casos_atendidos_range"]
     st.markdown(f"### Rango seleccionado: {start} a {end}")
@@ -297,81 +295,13 @@ def render():
         atendidas = float(resumen.get("conversaciones_atendidas_same_day", 0))
         pct_val = float(resumen.get("pct_atendidas", (atendidas / entradas * 100) if entradas else 0.0))
 
-        if pct_val > 75:
-            color = "#16a34a"
-        elif pct_val >= 60:
-            color = "#f59e0b"
-        else:
-            color = "#dc2626"
-
-        donut_df = pd.DataFrame(
-            {"segmento": ["Atendidas", "Restante"], "valor": [pct_val, 100 - pct_val]}
-        )
-        donut_cols = st.columns(2, gap="large")
-        with donut_cols[0]:
-            st.markdown("#### Porcentaje de Casos Atendidos en el mismo día")
-            render_description(
-                "Porcentaje de casos recibidos que fueron atendidos en el mismo día en el que ingresaron. (Verde mayor o igual a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
-            )
-            fig = px.pie(donut_df, names="segmento", values="valor", hole=0.6)
-            fig.update_traces(
-                marker=dict(colors=[color, "#e5e7eb"]),
-                textinfo="none",
-                hovertemplate="%{label}: %{value:.2f}%<extra></extra>",
-            )
-            fig.update_layout(
-                showlegend=False,
-                annotations=[
-                    dict(
-                        text=f"{pct_val:.2f}%",
-                        x=0.5,
-                        y=0.5,
-                        showarrow=False,
-                        font=dict(size=20),
-                    )
-                ],
-                margin=dict(l=0, r=0, t=0, b=0),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        with donut_cols[1]:
-            st.markdown("#### Distribucion de casos por Unidad")
-            render_description(
-                "Porciones del total de mensajes que recibe cada unidad. CCC es atendido por 8 agentes, mientras que el resto de unidades es atendido por 7 agentes."
-            )
-
+        # Compute resueltos totals before rendering donuts
         df_res = pd.DataFrame(_extract_rows(casos_resueltos))
         df_ab = pd.DataFrame(_extract_rows(casos_abandonados))
-        team_key = "team_name" if "team_name" in df_res.columns or "team_name" in df_ab.columns else "team_uuid"
-        if team_key in df_res.columns or team_key in df_ab.columns:
-            if team_key not in df_res.columns:
-                df_res[team_key] = None
-            if team_key not in df_ab.columns:
-                df_ab[team_key] = None
-            if "team_name" in df_res.columns:
-                df_res = df_res[df_res["team_name"] != "CHATBOT"]
-            if "team_name" in df_ab.columns:
-                df_ab = df_ab[df_ab["team_name"] != "CHATBOT"]
-
-            empresa_table = _aggregate_casos(df_res, df_ab, team_key).rename(columns={team_key: "Empresa"})
-            empresa_table = empresa_table[empresa_table["Empresa"] != "CHATBOT"]
-            empresa_table = empresa_table.rename(columns={"casos_abiertos": "Casos Recibidos"})
-            pie_df = empresa_table[["Empresa", "Casos Recibidos"]].copy()
-            pie_df["Casos Recibidos"] = pd.to_numeric(pie_df["Casos Recibidos"], errors="coerce").fillna(0)
-            pie_df = pie_df[pie_df["Casos Recibidos"] > 0]
-            with donut_cols[1]:
-                if not pie_df.empty:
-                    fig_empresas = px.pie(pie_df, names="Empresa", values="Casos Recibidos")
-                    fig_empresas.update_traces(
-                        textinfo="percent+label",
-                        hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
-                    )
-                    fig_empresas.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                    st.plotly_chart(fig_empresas, use_container_width=True)
-                else:
-                    st.info("Sin datos para la distribucion por unidad.")
-        else:
-            with donut_cols[1]:
-                st.info("Sin datos para la distribucion por unidad.")
+        if "team_name" in df_res.columns:
+            df_res = df_res[df_res["team_name"] != "CHATBOT"]
+        if "team_name" in df_ab.columns:
+            df_ab = df_ab[df_ab["team_name"] != "CHATBOT"]
 
         df_pend = pd.DataFrame(_extract_rows(pendientes))
         casos_pendientes = (
@@ -384,16 +314,93 @@ def render():
             if not df_res.empty and "casos_resueltos" in df_res.columns
             else 0.0
         )
+        pct_resueltos_val = (total_resueltos / entradas * 100) if entradas else 0.0
+
+        # Color helpers
+        def _donut_color(pct, high=75, mid=60):
+            if pct > high:
+                return "#16a34a"
+            if pct >= mid:
+                return "#f59e0b"
+            return "#dc2626"
+
+        def _make_donut_fig(pct, color):
+            df_d = pd.DataFrame({"segmento": ["Valor", "Restante"], "valor": [pct, max(100 - pct, 0)]})
+            fig_d = px.pie(df_d, names="segmento", values="valor", hole=0.6)
+            fig_d.update_traces(
+                marker=dict(colors=[color, "#e5e7eb"]),
+                textinfo="none",
+                hovertemplate="%{label}: %{value:.2f}%<extra></extra>",
+            )
+            fig_d.update_layout(
+                showlegend=False,
+                annotations=[dict(text=f"{pct:.2f}%", x=0.5, y=0.5, showarrow=False, font=dict(size=20))],
+                margin=dict(l=0, r=0, t=0, b=0),
+            )
+            return fig_d
+
+        donut_cols = st.columns(3, gap="large")
+        with donut_cols[0]:
+            st.markdown("#### % Casos Resueltos (En cualquier momento)")
+            render_description(
+                "Porcentaje de casos recibidos que fueron resueltos (cerrados) en cualquier momento del rango seleccionado. (Verde mayor a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
+            )
+            st.plotly_chart(
+                _make_donut_fig(pct_resueltos_val, _donut_color(pct_resueltos_val)),
+                use_container_width=True,
+            )
+        with donut_cols[1]:
+            st.markdown("#### Porcentaje de Casos Atendidos en el mismo día")
+            render_description(
+                "Porcentaje de casos recibidos que fueron atendidos en el mismo día en el que ingresaron. (Verde mayor o igual a 75%, Amarillo entre 60% y 75%, Rojo menor a 60%)"
+            )
+            st.plotly_chart(
+                _make_donut_fig(pct_val, _donut_color(pct_val)),
+                use_container_width=True,
+            )
+        with donut_cols[2]:
+            st.markdown("#### Distribucion de casos por Unidad")
+            render_description(
+                "Porciones del total de mensajes que recibe cada unidad. CCC es atendido por 8 agentes, mientras que el resto de unidades es atendido por 7 agentes."
+            )
+
+        team_key = "team_name" if "team_name" in df_res.columns or "team_name" in df_ab.columns else "team_uuid"
+        if team_key in df_res.columns or team_key in df_ab.columns:
+            if team_key not in df_res.columns:
+                df_res[team_key] = None
+            if team_key not in df_ab.columns:
+                df_ab[team_key] = None
+
+            empresa_table = _aggregate_casos(df_res, df_ab, team_key).rename(columns={team_key: "Empresa"})
+            empresa_table = empresa_table[empresa_table["Empresa"] != "CHATBOT"]
+            empresa_table = empresa_table.rename(columns={"casos_abiertos": "Casos Recibidos"})
+            pie_df = empresa_table[["Empresa", "Casos Recibidos"]].copy()
+            pie_df["Casos Recibidos"] = pd.to_numeric(pie_df["Casos Recibidos"], errors="coerce").fillna(0)
+            pie_df = pie_df[pie_df["Casos Recibidos"] > 0]
+            with donut_cols[2]:
+                if not pie_df.empty:
+                    fig_empresas = px.pie(pie_df, names="Empresa", values="Casos Recibidos")
+                    fig_empresas.update_traces(
+                        textinfo="percent+label",
+                        hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
+                    )
+                    fig_empresas.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig_empresas, use_container_width=True)
+                else:
+                    st.info("Sin datos para la distribucion por unidad.")
+        else:
+            with donut_cols[2]:
+                st.info("Sin datos para la distribucion por unidad.")
 
         kpi_cols = st.columns(4)
         with kpi_cols[0]:
             _render_kpi_card("Casos recibidos", int(entradas))
         with kpi_cols[1]:
-            _render_kpi_card("Casos Pendientes", int(casos_pendientes))
+            _render_kpi_card("Casos resueltos", int(total_resueltos))
         with kpi_cols[2]:
             _render_kpi_card("Atendidos mismo dia", int(atendidas))
         with kpi_cols[3]:
-            _render_kpi_card("Casos resueltos", int(total_resueltos))
+            _render_kpi_card("Casos Pendientes", int(casos_pendientes))
 
         st.markdown("#### Ranking de agentes")
         ranking_df = _build_ranking_df(start, end)
@@ -424,9 +431,29 @@ def render():
             "agent_email": "Agente",
             "conversaciones_entrantes": "Casos Recibidos",
             "conversaciones_atendidas_same_day": "Casos Atendidos (Mismo Dia)",
-            "pct_atendidas": "% Atendidas",
+            "pct_atendidas": "% Casos Atendidos (Mismo Dia)",
         }
     )
+
+    # Join casos resueltos per day
+    df_res_detail = pd.DataFrame(_extract_rows(casos_resueltos))
+    if not df_res_detail.empty:
+        if "team_name" in df_res_detail.columns:
+            df_res_detail = df_res_detail[df_res_detail["team_name"] != "CHATBOT"]
+        if "dia" in df_res_detail.columns and "casos_resueltos" in df_res_detail.columns:
+            resueltos_por_dia = (
+                df_res_detail.groupby("dia", as_index=False)
+                .agg(casos_resueltos_total=("casos_resueltos", "sum"))
+            )
+            df = df.merge(resueltos_por_dia, left_on="Dia", right_on="dia", how="left")
+            df = df.drop(columns=["dia"], errors="ignore")
+            df["casos_resueltos_total"] = df["casos_resueltos_total"].fillna(0)
+            df["% Casos Resueltos (En cualquier momento)"] = df.apply(
+                lambda row: round(row["casos_resueltos_total"] / row["Casos Recibidos"] * 100, 2)
+                if row["Casos Recibidos"] else 0.0,
+                axis=1,
+            )
+            df = df.rename(columns={"casos_resueltos_total": "Casos Resueltos (En cualquier momento)"})
 
     st.markdown("#### Detalle por dia")
     render_description(
@@ -436,7 +463,7 @@ def render():
         "Objetivo: Porcentaje de casos atendidos en el mismo dia sea mayor al 90% (verde), luego si esta entre 80% y 90% (amarillo), menor a 80% (rojo)."
     )
     st.dataframe(_style_atendidas(prepare_table(df)), use_container_width=True)
-    st.caption("% Atendidas: Verde mayor o igual a 90%, Amarillo 80% entre 90%, Rojo menos del 80%.")
+    st.caption("% Casos Atendidos (Mismo Dia): Verde mayor o igual a 90%, Amarillo 80%-90%, Rojo menos del 80%.")
 
 
 if __name__ == "__main__":
