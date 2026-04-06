@@ -265,16 +265,28 @@ def _apply_eventos(
         if unidad:
             label = f"{label} ({unidad})"
         x_val = pd.Timestamp(ev["fecha"])
-        fig.add_vline(
-            x=x_val.value // 10**6,
-            line_dash="dot",
-            line_color=ev["color"],
-            line_width=1.5,
-            annotation_text=label,
-            annotation_position="top right",
-            annotation_font_size=10,
-            annotation_font_color=ev["color"],
-            annotation_bgcolor="rgba(0,0,0,0.5)",
+        x_str = x_val.strftime("%Y-%m-%d")
+        fig.add_shape(
+            type="line",
+            x0=x_str,
+            x1=x_str,
+            y0=0,
+            y1=1,
+            xref="x",
+            yref="paper",
+            line=dict(dash="dot", color=ev["color"], width=1.5),
+        )
+        fig.add_annotation(
+            x=x_str,
+            y=1,
+            xref="x",
+            yref="paper",
+            text=label,
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+            font=dict(size=10, color=ev["color"]),
+            bgcolor="rgba(0,0,0,0.5)",
         )
 
 
