@@ -8,7 +8,7 @@ from config import DEFAULT_MAX_SECONDS
 from helpers import api_client
 from helpers.agent_mapping import normalize_agent_key, with_agent_display_names
 from helpers.calls_ranking import load_attended_calls_by_agent
-from helpers.utils import date_range_picker, prepare_table, quick_range, render_description
+from helpers.utils import date_range_picker, format_seconds, prepare_table, quick_range, render_description
 
 
 def _init_state(key: str) -> None:
@@ -274,18 +274,22 @@ def render():
         data = api_client.casos_atendidos_ultimas_24h()
         casos_resueltos = api_client.casos_resueltos_ultimas_24h("", "")
         casos_abandonados = api_client.casos_abandonados_24h_ultimas_24h("", "", "")
+        frt_data = api_client.frt_ultimas_24h("", "")
     elif mode == "48h":
         data = api_client.casos_atendidos_ultimas_48h()
         casos_resueltos = api_client.casos_resueltos_ultimas_48h("", "")
         casos_abandonados = api_client.casos_abandonados_24h_ultimas_48h("", "", "")
+        frt_data = api_client.frt_ultimas_48h("", "")
     elif mode == "7d":
         data = api_client.casos_atendidos_ultimos_7_dias()
         casos_resueltos = api_client.casos_resueltos_ultimos_7_dias("", "")
         casos_abandonados = api_client.casos_abandonados_24h_ultimos_7_dias("", "", "")
+        frt_data = api_client.frt_ultimos_7_dias("", "")
     else:
         data = api_client.metrics_casos_atendidos(start, end)
         casos_resueltos = api_client.casos_resueltos(start, end, "", "")
         casos_abandonados = api_client.casos_abandonados_24h(start, end, "", "", "")
+        frt_data = api_client.frt_tiempo_primera_respuesta(start, end, "", "")
 
     resumen = api_client.metrics_casos_atendidos_resumen(start, end)
     pendientes = api_client.casos_pendientes(start, end, "", "")
@@ -392,7 +396,20 @@ def render():
             with donut_cols[2]:
                 st.info("Sin datos para la distribucion por unidad.")
 
-        kpi_cols = st.columns(4)
+        frt_rows = frt_data.get("data", frt_data) if isinstance(frt_data, dict) else frt_data
+        df_frt = pd.DataFrame(frt_rows)
+        if not df_frt.empty:
+            if "team_name" in df_frt.columns:
+                df_frt = df_frt[df_frt["team_name"] != "CHATBOT"]
+            if "agent_email" in df_frt.columns:
+                df_frt = df_frt[df_frt["agent_email"].notna()]
+        avg_frt_val = (
+            float(df_frt["avg_frt_seconds"].mean())
+            if not df_frt.empty and "avg_frt_seconds" in df_frt.columns
+            else 0.0
+        )
+
+        kpi_cols = st.columns(5)
         with kpi_cols[0]:
             _render_kpi_card("Casos recibidos", int(entradas))
         with kpi_cols[1]:
@@ -401,6 +418,16 @@ def render():
             _render_kpi_card("Atendidos mismo dia", int(atendidas))
         with kpi_cols[3]:
             _render_kpi_card("Casos Pendientes", int(casos_pendientes))
+        with kpi_cols[4]:
+            st.markdown(
+                f"""
+<div class="kpi-card">
+  <div style="font-size: 14px; opacity: 0.8;">T. Primera Respuesta (Promedio)</div>
+  <div style="font-size: 32px; font-weight: 700;">{format_seconds(avg_frt_val)}</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
 
         st.markdown("#### Ranking de agentes")
         ranking_df = _build_ranking_df(start, end)
