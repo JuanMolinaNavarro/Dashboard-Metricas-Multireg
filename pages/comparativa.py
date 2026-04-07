@@ -4,7 +4,6 @@ from datetime import date
 
 import pandas as pd
 import streamlit as st
-
 from helpers import api_client
 from helpers.utils import month_range_picker
 
@@ -43,18 +42,37 @@ METRIC_DESCRIPTIONS = {
 }
 
 MONTH_LONG = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+    1: "Enero",
+    2: "Febrero",
+    3: "Marzo",
+    4: "Abril",
+    5: "Mayo",
+    6: "Junio",
+    7: "Julio",
+    8: "Agosto",
+    9: "Septiembre",
+    10: "Octubre",
+    11: "Noviembre",
+    12: "Diciembre",
 }
 MONTH_SHORT = {
-    1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
-    5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
-    9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
+    1: "Ene",
+    2: "Feb",
+    3: "Mar",
+    4: "Abr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Ago",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dic",
 }
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
+
 
 def _init_state() -> None:
     if "comp_n_periods" not in st.session_state:
@@ -62,6 +80,7 @@ def _init_state() -> None:
 
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
+
 
 def _to_list(data) -> list:
     if isinstance(data, list):
@@ -85,7 +104,9 @@ def _aggregate_period(start: date, end: date) -> dict[str, dict[str, float | Non
 
     # Volumen
     df = _df_clean(
-        api_client.get_json("/metrics/equipos", {"desde": str(start), "hasta": str(end)})
+        api_client.get_json(
+            "/metrics/equipos", {"desde": str(start), "hasta": str(end)}
+        )
     )
     if not df.empty and "conversaciones_entrantes" in df.columns:
         agg = df.groupby("team_name")["conversaciones_entrantes"].sum()
@@ -116,7 +137,9 @@ def _aggregate_period(start: date, end: date) -> dict[str, dict[str, float | Non
             )
             d = {}
             for team, row in agg.iterrows():
-                d[team] = round(row["_w"] / row["_n"] / 60, 1) if row["_n"] > 0 else None
+                d[team] = (
+                    round(row["_w"] / row["_n"] / 60, 1) if row["_n"] > 0 else None
+                )
             total_w = float(df["_w"].sum())
             total_n = float(df["casos_respondidos"].sum())
             d[TOTAL_LABEL] = round(total_w / total_n / 60, 1) if total_n > 0 else None
@@ -137,7 +160,9 @@ def _aggregate_period(start: date, end: date) -> dict[str, dict[str, float | Non
             )
             d = {}
             for team, row in agg.iterrows():
-                d[team] = round(row["_w"] / row["_n"] / 60, 1) if row["_n"] > 0 else None
+                d[team] = (
+                    round(row["_w"] / row["_n"] / 60, 1) if row["_n"] > 0 else None
+                )
             total_w = float(df["_w"].sum())
             total_n = float(df["conversaciones_cerradas"].sum())
             d[TOTAL_LABEL] = round(total_w / total_n / 60, 1) if total_n > 0 else None
@@ -145,16 +170,24 @@ def _aggregate_period(start: date, end: date) -> dict[str, dict[str, float | Non
 
     # % Resueltos
     df = _df_clean(api_client.casos_resueltos(start, end))
-    if not df.empty and "casos_resueltos" in df.columns and "casos_abiertos" in df.columns:
+    if (
+        not df.empty
+        and "casos_resueltos" in df.columns
+        and "casos_abiertos" in df.columns
+    ):
         agg = df.groupby("team_name").agg(
             res=("casos_resueltos", "sum"), ab=("casos_abiertos", "sum")
         )
         d = {}
         for team, row in agg.iterrows():
-            d[team] = round(100.0 * row["res"] / row["ab"], 1) if row["ab"] > 0 else None
+            d[team] = (
+                round(100.0 * row["res"] / row["ab"], 1) if row["ab"] > 0 else None
+            )
         total_res = float(df["casos_resueltos"].sum())
         total_ab = float(df["casos_abiertos"].sum())
-        d[TOTAL_LABEL] = round(100.0 * total_res / total_ab, 1) if total_ab > 0 else None
+        d[TOTAL_LABEL] = (
+            round(100.0 * total_res / total_ab, 1) if total_ab > 0 else None
+        )
         result["% Resueltos"] = d
 
     # % Cerrados mismo día
@@ -169,10 +202,14 @@ def _aggregate_period(start: date, end: date) -> dict[str, dict[str, float | Non
         )
         d = {}
         for team, row in agg.iterrows():
-            d[team] = round(100.0 * row["cerr"] / row["ab"], 1) if row["ab"] > 0 else None
+            d[team] = (
+                round(100.0 * row["cerr"] / row["ab"], 1) if row["ab"] > 0 else None
+            )
         total_cerr = float(df["casos_cerrados_mismo_dia"].sum())
         total_ab = float(df["casos_abiertos"].sum())
-        d[TOTAL_LABEL] = round(100.0 * total_cerr / total_ab, 1) if total_ab > 0 else None
+        d[TOTAL_LABEL] = (
+            round(100.0 * total_cerr / total_ab, 1) if total_ab > 0 else None
+        )
         result["% Cerrados mismo día"] = d
 
     return result
@@ -187,6 +224,7 @@ def _get_all_teams(periods_agg: list[dict]) -> list[str]:
 
 
 # ── Table rendering ───────────────────────────────────────────────────────────
+
 
 def _fmt_value(v, fmt: str) -> str:
     if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -254,12 +292,19 @@ def _render_metric_table(
 
     # ── Color: best / worst period per empresa row (green bg / red bg) ────
     if len(period_labels) >= 2:
+
         def _highlight_periods(row: pd.Series) -> pd.Series:
             styles = pd.Series("", index=row.index)
             is_total = row.get("Empresa") == TOTAL_LABEL
             if is_total:
                 return styles
-            valid = {c: row[c] for c in period_labels if c in row.index and row[c] is not None and not (isinstance(row[c], float) and pd.isna(row[c]))}
+            valid = {
+                c: row[c]
+                for c in period_labels
+                if c in row.index
+                and row[c] is not None
+                and not (isinstance(row[c], float) and pd.isna(row[c]))
+            }
             if len(valid) < 2:
                 return styles
             best = min(valid, key=valid.get) if lower else max(valid, key=valid.get)
@@ -273,12 +318,21 @@ def _render_metric_table(
 
     # ── Color: Variación text (green = improvement, red = worsening) ──────
     if has_variacion:
+
         def _color_variacion(v) -> str:
             if v is None or (isinstance(v, float) and pd.isna(v)) or v == 0:
                 return ""
             if lower:
-                return "color: #16a34a; font-weight: 600" if v < 0 else "color: #dc2626; font-weight: 600"
-            return "color: #16a34a; font-weight: 600" if v > 0 else "color: #dc2626; font-weight: 600"
+                return (
+                    "color: #16a34a; font-weight: 600"
+                    if v < 0
+                    else "color: #dc2626; font-weight: 600"
+                )
+            return (
+                "color: #16a34a; font-weight: 600"
+                if v > 0
+                else "color: #dc2626; font-weight: 600"
+            )
 
         styler = styler.applymap(_color_variacion, subset=["Variación"])
 
@@ -298,6 +352,7 @@ def _render_metric_table(
 
 # ── Main render ───────────────────────────────────────────────────────────────
 
+
 def render() -> None:
     st.header("Comparativas")
     _init_state()
@@ -310,7 +365,7 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    period_cols = st.columns(n + 1, gap="small")
+    period_cols = st.columns(n, gap="small")
     periods: list[tuple[str, date, date]] = []
 
     # Track labels to handle duplicate month selections
@@ -326,39 +381,27 @@ def render() -> None:
                 label = base if count == 1 else f"{base} ({count})"
                 periods.append((label, start, end))
 
-    with period_cols[-1]:
-        st.write("")
-        st.write("")
+    # Buttons sit below the period frames
+    btn_cols = st.columns([1, 1, 5], gap="small")
+    with btn_cols[0]:
         if n < 6:
-            if st.button("+ Período", key="comp_add", use_container_width=True):
+            if st.button(
+                "Agregar nuevo período", key="comp_add", use_container_width=True
+            ):
                 st.session_state["comp_n_periods"] += 1
                 st.rerun()
+    with btn_cols[1]:
         if n > 1:
-            if st.button("× Quitar", key="comp_remove", use_container_width=True):
+            if st.button(
+                "Quitar último período", key="comp_remove", use_container_width=True
+            ):
                 st.session_state["comp_n_periods"] -= 1
                 st.rerun()
 
     # ── Filters ───────────────────────────────────────────────────────────
-    st.markdown("---")
-    fcol1, fcol2, fcol3 = st.columns([3, 3, 1])
-    with fcol1:
-        # Placeholder multiselect — options are set after data loads
+    with st.container(border=True):
         empresas_placeholder = st.empty()
-    with fcol2:
-        selected_metrics = st.multiselect(
-            "Métricas",
-            options=ALL_METRICS,
-            default=ALL_METRICS,
-            key="comp_metrics",
-        )
-    with fcol3:
-        st.write("")
         show_total = st.checkbox("Total", value=True, key="comp_show_total")
-
-    if not selected_metrics:
-        st.info("Selecciona al menos una métrica.")
-        return
-
     # ── Load data ─────────────────────────────────────────────────────────
     with st.spinner("Cargando datos..."):
         periods_agg = [_aggregate_period(start, end) for _, start, end in periods]
@@ -384,12 +427,14 @@ def render() -> None:
     empresas_to_show = list(selected_empresas) + ([TOTAL_LABEL] if show_total else [])
     period_labels = [lbl for lbl, _, _ in periods]
 
-    # ── Metric tables in 2-column grid ────────────────────────────────────
+    # ── Metric tables in 2-column grid (all metrics, always) ─────────────
     st.markdown("---")
-    for row_start in range(0, len(selected_metrics), 2):
-        chunk = selected_metrics[row_start : row_start + 2]
+    for row_start in range(0, len(ALL_METRICS), 2):
+        chunk = ALL_METRICS[row_start : row_start + 2]
         grid = st.columns(len(chunk), gap="large")
         for col_i, metric in enumerate(chunk):
             with grid[col_i]:
-                _render_metric_table(metric, period_labels, periods_agg, empresas_to_show)
+                _render_metric_table(
+                    metric, period_labels, periods_agg, empresas_to_show
+                )
         st.write("")  # vertical gap between grid rows
