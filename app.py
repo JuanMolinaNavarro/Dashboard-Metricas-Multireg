@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 import requests
 
 from config import APP_TITLE
-from pages import casos_atendidos, casos, duracion, frt, admin_panel, llamadas, tendencias
+from pages import casos_atendidos, casos, duracion, frt, admin_panel, llamadas, tendencias, comparativa
 from helpers.api_client import login
 
 
@@ -170,7 +170,7 @@ if st.session_state.get("show_admin_panel"):
     admin_panel.render()
     st.stop()
 
-TABS = ["Inicio", "Tendencias", "Llamadas", "Abandonos", "FRT", "Duracion"]
+TABS = ["Inicio", "Tendencias", "Comparativas", "Llamadas", "Abandonos", "FRT", "Duracion"]
 
 selected_tab = st.pills(
     "Sección",
@@ -195,3 +195,5 @@ elif selected_tab == "Llamadas":
     llamadas.render()
 elif selected_tab == "Tendencias":
     tendencias.render()
+elif selected_tab == "Comparativas":
+    comparativa.render()

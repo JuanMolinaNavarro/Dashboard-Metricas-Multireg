@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 from typing import Optional, Tuple
 
@@ -22,6 +23,49 @@ def prev_month_range() -> Tuple[date, date]:
     today = date.today()
     last_day_prev = today.replace(day=1) - timedelta(days=1)
     return last_day_prev.replace(day=1), last_day_prev
+
+
+_MONTH_NAMES_LONG = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+}
+
+
+def month_range_picker(key: str, default_offset: int = 0) -> Tuple[date, date]:
+    """Render year + month selectboxes and return (first_day, last_day) of the selected month.
+
+    Args:
+        key: Unique key prefix for the Streamlit widgets.
+        default_offset: How many months back from today to pre-select (0 = current month).
+    """
+    today = date.today()
+    def_year = today.year
+    def_month = today.month - default_offset
+    while def_month < 1:
+        def_month += 12
+        def_year -= 1
+
+    year_options = list(range(today.year - 2, today.year + 1))
+    if def_year not in year_options:
+        def_year = year_options[0]
+
+    sel_year = st.selectbox(
+        "Año",
+        options=year_options,
+        index=year_options.index(def_year),
+        key=f"{key}_year",
+    )
+    sel_month = st.selectbox(
+        "Mes",
+        options=list(range(1, 13)),
+        format_func=lambda m: _MONTH_NAMES_LONG[m],
+        index=def_month - 1,
+        key=f"{key}_month",
+    )
+
+    last_day = calendar.monthrange(sel_year, sel_month)[1]
+    return date(sel_year, sel_month, 1), date(sel_year, sel_month, last_day)
 
 
 def date_range_picker(key: str, default: Optional[Tuple[date, date]] = None) -> Tuple[date, date]:
