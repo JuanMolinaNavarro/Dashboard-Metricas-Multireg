@@ -12,9 +12,10 @@ from helpers.utils import prepare_table, quick_range
 CHATBOT_TEAM = "CHATBOT"
 
 COLOR_NAMES = {
+    "#FECB52": "Fecha de cortes",
     "#EF553B": "Incidencia",
-    "#FECB52": "Corte Masivo",
-    "#00CC96": "Otros",
+    "#00CC96": "Campañas",
+    "#636EFA": "Otros",
 }
 TOTAL_LABEL = "Total"
 TOTAL_COLOR = "#D2691E"
@@ -224,21 +225,23 @@ def _render_eventos_table(eventos: list[dict]) -> None:
     records = []
     colors = []
     for ev in eventos:
-        color_hex = ev.get("color", "#EF553B")
+        color_hex = ev.get("color") or "#EF553B"
         colors.append(color_hex)
+        tipo_label = ev.get("tipo") or COLOR_NAMES.get(color_hex, "—")
         records.append({
-            "Tipo": COLOR_NAMES.get(color_hex, color_hex),
+            "Tipo": tipo_label,
             "Unidad": ev.get("unidad") or "Global",
-            "Titulo": ev.get("titulo") or "",
-            "Descripcion": ev.get("descripcion") or "",
             "Fecha": ev.get("fecha") or "",
+            "Titulo": ev.get("titulo") or "",
+            "Descripcion": ev.get("descripcion") or "—",
+            "Afectados": ev.get("afectados") if ev.get("afectados") is not None else "—",
+            "Creado Por": ev.get("creado_por") or "—",
         })
 
-    df = pd.DataFrame(records)
-    df = prepare_table(df)
+    df = prepare_table(pd.DataFrame(records))
 
     def _color_tipo(col):
-        return [f"color: {hex_}" for hex_ in colors]
+        return [f"color: {c}; font-weight: bold" for c in colors]
 
     styler = df.style.apply(_color_tipo, subset=["Tipo"])
     st.dataframe(styler, use_container_width=True)
