@@ -228,10 +228,20 @@ def _render_eventos_table(eventos: list[dict]) -> None:
         color_hex = ev.get("color") or "#EF553B"
         colors.append(color_hex)
         tipo_label = ev.get("tipo") or COLOR_NAMES.get(color_hex, "—")
+        desde_hora = ev.get("desdeHora")
+        hasta_hora = ev.get("hastaHora")
+        if desde_hora and hasta_hora:
+            hora_str = f"{desde_hora} - {hasta_hora}"
+        elif desde_hora or hasta_hora:
+            hora_str = desde_hora or hasta_hora
+        else:
+            hora_str = "—"
         records.append({
             "Tipo": tipo_label,
             "Unidad": ev.get("unidad") or "Global",
+            "Zona": ev.get("zona") or "—",
             "Fecha": ev.get("fecha") or "",
+            "Hora": hora_str,
             "Titulo": ev.get("titulo") or "",
             "Descripcion": ev.get("descripcion") or "—",
             "Afectados": ev.get("afectados") if ev.get("afectados") is not None else "—",
