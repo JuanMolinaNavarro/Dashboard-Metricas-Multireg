@@ -23,8 +23,9 @@ def render():
     _init_state("duracion_range")
     start, end = st.session_state["duracion_range"]
 
-    range_options = ["Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
+    range_options = ["Hoy", "Ultimas 24h", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
     mode_to_label = {
+        "hoy": "Hoy",
         "24h": "Ultimas 24h",
         "48h": "Ultimas 48h",
         "7d": "Ultimos 7 dias",
@@ -55,6 +56,9 @@ def render():
             "dur_picker",
             (start, end),
         )
+    elif mode == "hoy":
+        st.session_state["duracion_range"] = quick_range(0)
+        st.caption("Mostrando datos de hoy. Selecciona Personalizado para elegir fechas.")
     elif mode == "24h":
         st.session_state["duracion_range"] = quick_range(1)
         st.caption("Usando rango rapido (24h). Selecciona Personalizado para elegir fechas.")

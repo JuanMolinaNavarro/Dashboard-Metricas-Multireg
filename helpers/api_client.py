@@ -108,6 +108,10 @@ def get_json_with_fallback(
         raise
 
 
+def metrics_equipos(desde: date, hasta: date) -> Dict[str, Any]:
+    return get_json("/metrics/equipos", {"desde": str(desde), "hasta": str(hasta)})
+
+
 def metrics_casos_atendidos(desde: date, hasta: date) -> Dict[str, Any]:
     return get_json("/metrics/casos-atendidos", {"desde": str(desde), "hasta": str(hasta)})
 

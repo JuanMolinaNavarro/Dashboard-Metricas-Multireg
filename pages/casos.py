@@ -24,8 +24,9 @@ def render():
     _init_state("casos_range")
     start, end = st.session_state["casos_range"]
 
-    range_options = ["Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
+    range_options = ["Hoy", "Ultimas 48h", "Ultimos 7 dias", "Ultimos 30 dias", "Personalizado"]
     mode_to_label = {
+        "hoy": "Hoy",
         "48h": "Ultimas 48h",
         "7d": "Ultimos 7 dias",
         "30d": "Ultimos 30 dias",
@@ -52,6 +53,9 @@ def render():
 
     if mode == "custom":
         st.session_state["casos_range"] = date_range_picker("cas_picker", (start, end))
+    elif mode == "hoy":
+        st.session_state["casos_range"] = quick_range(0)
+        st.caption("Mostrando datos de hoy. Selecciona Personalizado para elegir fechas.")
     elif mode == "48h":
         st.session_state["casos_range"] = quick_range(2)
         st.caption("Usando rango rapido (48h). Selecciona Personalizado para elegir fechas.")
